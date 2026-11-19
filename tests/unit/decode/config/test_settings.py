@@ -1,0 +1,788 @@
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from xape.config import settings as singleton
+from xape.config.settings import Settings
+
+# Each *_ENV_VARS tuple below is cleared in default/.env tests so a developer's real
+# environment cannot leak into the assertions.
+
+# Provider vars (ADR-0005).
+_PROVIDER_ENV_VARS = (
+    "LLM_PROVIDER",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+    "MODAL_ENDPOINT_URL",
+    "MODAL_ENDPOINT_MODEL",
+    "MODAL_PROXY_TOKEN_ID",
+    "MODAL_PROXY_TOKEN_SECRET",
+    "OLLAMA_BASE_URL",
+    "OLLAMA_MODEL",
+)
+
+# Context compaction vars (ADR-0006).
+_COMPACTION_ENV_VARS = (
+    "COMPACTION_ENABLED",
+    "COMPACTION_CONTEXT_WINDOW_TOKENS",
+    "COMPACTION_RESERVE_FRACTION",
+    "MICROCOMPACTION_RESERVE_FRACTION",
+    "COMPACTION_KEEP_RECENT_TOKENS",
+    "MEMORY_COMPRESSION_ENABLED",
+)
+
+# LSP / code intelligence vars (ADR-0007).
+_LSP_ENV_VARS = (
+    "LSP_ENABLED",
+    "LSP_SERVER_COMMAND",
+    "LSP_SERVER_ARGS",
+    "LSP_DIAGNOSTICS_ON_EDIT",
+    "LSP_REQUEST_TIMEOUT_S",
+)
+
+# Headless runtime vars (ADR-0019 §1). Only the master gate survives: the durable-flow knobs
+# (RUNTIME_CHECKPOINT_STRATEGY / RUNTIME_WAIT_TIMEOUT_S) died with the flow, and the secret knobs
+# with ADR-0015 §4 / ADR-0021 — one Settings chain at every XAPE_ENV.
+_RUNTIME_ENV_VARS = ("RUNTIME_ENABLED",)
+
+# Sandboxing vars (ADR-0011). The Credential-Proxy knobs are gone with the proxy (ADR-0016 §1) —
+# a clean break: a retired key left in a ``.env`` is simply ignored (``extra="ignore"``).
+_SANDBOX_ENV_VARS = (
+    "SANDBOX_MODE",
+    "SANDBOX_IMAGE",
+    "SANDBOX_TIMEOUT_S",
+)
+
+# Subagent tuning vars (ADR-0013).
+_SUBAGENT_ENV_VARS = (
+    "SUBAGENT_MAX_PARALLEL",
+    "SUBAGENT_MAX_REQUESTS",
+    "SUBAGENT_RESULT_MAX_BYTES",
+)
+
+# Observability: Langfuse vars (ADR-0024).
+_LANGFUSE_ENV_VARS = (
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_HOST",
+)
+
+# Evals vars. The eval suite is not shipped in the wheel, but its judges read off this Settings surface.
+_EVAL_ENV_VARS = (
+    "EVAL_JUDGE_MODEL",
+    "EVAL_PROJECT_NAME",
+)
+
+
+def test_defaults(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    s = Settings(_env_file=None)
+    assert s.gemini_model == "gemini-3.8-flash"
+    assert s.max_output_lines == 2000
+    assert s.max_output_bytes == 50_000
+    assert s.memory_max_lines == 200
+    assert s.memory_max_bytes == 25_000
+    assert s.xape_dir == Path(".xape")
+    assert s.sessions_dir == Path(".xape/sessions")
+    assert s.permissions_file == Path(".xape/settings.json")
+    assert s.gemini_api_key.get_secret_value() == ""
+
+
+def test_reads_env(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "secret123")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-pro")
+    s = Settings(_env_file=None)
+    assert s.gemini_api_key.get_secret_value() == "secret123"
+    assert s.gemini_model == "gemini-2.5-pro"
+
+
+def test_loads_values_from_a_dotenv_file(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("GEMINI_API_KEY=sk-from-dotenv\nGEMINI_MODEL=gemini-2.5-pro\n")
+    s = Settings(_env_file=str(env))
+    assert s.gemini_api_key.get_secret_value() == "sk-from-dotenv"
+    assert s.gemini_model == "gemini-2.5-pro"
+
+
+def test_process_env_var_overrides_dotenv(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text("GEMINI_API_KEY=sk-from-dotenv\n")
+    monkeypatch.setenv("GEMINI_API_KEY", "sk-from-process-env")
+    s = Settings(_env_file=str(env))
+    assert s.gemini_api_key.get_secret_value() == "sk-from-process-env"
+
+
+@pytest.mark.parametrize("placeholder", ["changeme", "CHANGEME", " change-me ", "your-key-here"])
+def test_placeholder_secret_reads_as_unset(tmp_path, monkeypatch, placeholder):
+    """An unfilled ``.env.example`` value must fail the startup PRESENCE check, not a provider 400."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    env = tmp_path / ".env"
+    env.write_text(f"GEMINI_API_KEY={placeholder}\n")
+    s = Settings(_env_file=str(env))
+    assert s.gemini_api_key.get_secret_value() == ""
+
+
+def test_whitespace_only_secret_reads_as_unset(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+    s = Settings(_env_file=None)
+    assert s.openrouter_api_key.get_secret_value() == ""
+
+
+def test_scrub_leaves_a_real_key_alone(monkeypatch):
+    """The scrub is an exact-literal match: a real key that merely CONTAINS one survives."""
+    monkeypatch.setenv("GEMINI_API_KEY", "sk-changeme-not-really")
+    s = Settings(_env_file=None)
+    assert s.gemini_api_key.get_secret_value() == "sk-changeme-not-really"
+
+
+def test_scrub_covers_every_gated_secret(monkeypatch):
+    for var in ("MODAL_PROXY_TOKEN_ID", "MODAL_PROXY_TOKEN_SECRET"):
+        monkeypatch.setenv(var, "changeme")
+    monkeypatch.setenv("SANDBOX_GIT_TOKEN", "changeme")
+    s = Settings(_env_file=None)
+    assert s.modal_proxy_token_id.get_secret_value() == ""
+    assert s.modal_proxy_token_secret.get_secret_value() == ""
+    assert s.ollama_base_url == "http://localhost:11434"
+    assert s.ollama_model == ""
+    assert s.sandbox_git_token is not None
+    assert s.sandbox_git_token.get_secret_value() == ""
+
+
+def test_unset_sandbox_git_token_stays_none(monkeypatch):
+    """``None`` (never set) is distinct from a scrubbed empty and must survive the scrub."""
+    monkeypatch.delenv("SANDBOX_GIT_TOKEN", raising=False)
+    s = Settings(_env_file=None)
+    assert s.sandbox_git_token is None
+
+
+def test_secret_not_in_repr():
+    s = Settings(_env_file=None, gemini_api_key="topsecret")
+    assert "topsecret" not in repr(s)
+
+
+def test_module_singleton_is_settings_instance():
+    assert isinstance(singleton, Settings)
+
+
+def test_provider_defaults(monkeypatch):
+    for var in _PROVIDER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.llm_provider == "gemini"
+    assert s.openrouter_model == "openrouter/free"
+    assert s.modal_endpoint_model == "Qwen/Qwen3.6-35B-A3B-FP8"
+    assert s.modal_endpoint_url == ""
+    assert s.openrouter_api_key.get_secret_value() == ""
+    assert s.modal_proxy_token_id.get_secret_value() == ""
+    assert s.modal_proxy_token_secret.get_secret_value() == ""
+
+
+@pytest.mark.parametrize("provider", ["gemini", "openrouter", "modal", "ollama"])
+def test_llm_provider_accepts_each_valid_literal(monkeypatch, provider):
+    monkeypatch.setenv("LLM_PROVIDER", provider)
+    s = Settings(_env_file=None)
+    assert s.llm_provider == provider
+
+
+def test_llm_provider_rejects_unknown_value(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_ollama_settings_are_read_from_process_env(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://ollama.local:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3:8b")
+
+    s = Settings(_env_file=None)
+
+    assert s.llm_provider == "ollama"
+    assert s.ollama_base_url == "http://ollama.local:11434"
+    assert s.ollama_model == "qwen3:8b"
+    assert s.active_model == "qwen3:8b"
+
+
+def test_reads_provider_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-123")
+    monkeypatch.setenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+    monkeypatch.setenv("MODAL_ENDPOINT_URL", "https://example.modal.run")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "zai-org/GLM-5.2-FP8")
+    monkeypatch.setenv("MODAL_PROXY_TOKEN_ID", "wk-abc")
+    monkeypatch.setenv("MODAL_PROXY_TOKEN_SECRET", "ws-xyz")
+    s = Settings(_env_file=None)
+    assert s.llm_provider == "openrouter"
+    assert s.openrouter_api_key.get_secret_value() == "sk-or-123"
+    assert s.openrouter_model == "meta-llama/llama-3.3-70b-instruct:free"
+    assert s.modal_endpoint_url == "https://example.modal.run"
+    assert s.modal_endpoint_model == "zai-org/GLM-5.2-FP8"
+    assert s.modal_proxy_token_id.get_secret_value() == "wk-abc"
+    assert s.modal_proxy_token_secret.get_secret_value() == "ws-xyz"
+
+
+def test_loads_provider_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _PROVIDER_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "LLM_PROVIDER=modal\n"
+        "OPENROUTER_API_KEY=sk-or-from-dotenv\n"
+        "OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free\n"
+        "MODAL_ENDPOINT_URL=https://dotenv.modal.run\n"
+        "MODAL_ENDPOINT_MODEL=Qwen/Qwen3.6-35B-A3B-FP8\n"
+        "MODAL_PROXY_TOKEN_ID=wk-dotenv\n"
+        "MODAL_PROXY_TOKEN_SECRET=ws-dotenv\n"
+    )
+    s = Settings(_env_file=str(env))
+    assert s.llm_provider == "modal"
+    assert s.openrouter_api_key.get_secret_value() == "sk-or-from-dotenv"
+    assert s.openrouter_model == "meta-llama/llama-3.3-70b-instruct:free"
+    assert s.modal_endpoint_url == "https://dotenv.modal.run"
+    assert s.modal_endpoint_model == "Qwen/Qwen3.6-35B-A3B-FP8"
+    assert s.modal_proxy_token_id.get_secret_value() == "wk-dotenv"
+    assert s.modal_proxy_token_secret.get_secret_value() == "ws-dotenv"
+
+
+def test_provider_secrets_not_in_repr():
+    s = Settings(
+        _env_file=None,
+        openrouter_api_key="or-topsecret",
+        modal_proxy_token_id="wk-topsecret",
+        modal_proxy_token_secret="ws-topsecret",
+    )
+    text = repr(s)
+    assert "or-topsecret" not in text
+    assert "wk-topsecret" not in text
+    assert "ws-topsecret" not in text
+
+
+def test_compaction_defaults(monkeypatch):
+    for var in _COMPACTION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    # The window DERIVES from the active model, so this test must pin the provider too — otherwise it
+    # reads whatever leaked into ``os.environ``. It does leak: ``import litellm`` (pulled in by the
+    # evals tests) calls ``load_dotenv()``, so a developer's real ``.env`` lands in the process env
+    # and this file's result depends on test ORDER. Passes in CI either way — there is no .env there.
+    for var in ("LLM_PROVIDER", "GEMINI_MODEL", "OPENROUTER_MODEL", "MODAL_ENDPOINT_MODEL"):
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.compaction_enabled is True
+    assert s.compaction_context_window_tokens == 1_048_576  # derived: gemini-3.8-flash
+    assert s.compaction_reserve_fraction == 0.20
+    assert s.microcompaction_reserve_fraction == 0.40
+    assert s.compaction_keep_recent_tokens == 20_000
+    assert s.memory_compression_enabled is True
+
+
+def test_microcompaction_reserves_more_than_full_on_defaults(monkeypatch):
+    """Invariant (ADR-0006 §3): micro reserves more → fires first."""
+    for var in _COMPACTION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.microcompaction_reserve_fraction > s.compaction_reserve_fraction
+
+
+def test_reads_compaction_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("COMPACTION_ENABLED", "false")
+    monkeypatch.setenv("COMPACTION_CONTEXT_WINDOW_TOKENS", "200000")
+    monkeypatch.setenv("COMPACTION_RESERVE_FRACTION", "0.15")
+    monkeypatch.setenv("MICROCOMPACTION_RESERVE_FRACTION", "0.35")
+    monkeypatch.setenv("COMPACTION_KEEP_RECENT_TOKENS", "12345")
+    monkeypatch.setenv("MEMORY_COMPRESSION_ENABLED", "false")
+    s = Settings(_env_file=None)
+    assert s.compaction_enabled is False
+    assert s.compaction_context_window_tokens == 200_000
+    assert s.compaction_reserve_fraction == 0.15
+    assert s.microcompaction_reserve_fraction == 0.35
+    assert s.compaction_keep_recent_tokens == 12_345
+    assert s.memory_compression_enabled is False
+
+
+def test_loads_compaction_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _COMPACTION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "COMPACTION_ENABLED=false\n"
+        "COMPACTION_CONTEXT_WINDOW_TOKENS=200000\n"
+        "COMPACTION_RESERVE_FRACTION=0.10\n"
+        "MICROCOMPACTION_RESERVE_FRACTION=0.30\n"
+        "COMPACTION_KEEP_RECENT_TOKENS=9999\n"
+        "MEMORY_COMPRESSION_ENABLED=false\n"
+    )
+    s = Settings(_env_file=str(env))
+    assert s.compaction_enabled is False
+    assert s.compaction_context_window_tokens == 200_000
+    assert s.compaction_reserve_fraction == 0.10
+    assert s.microcompaction_reserve_fraction == 0.30
+    assert s.compaction_keep_recent_tokens == 9999
+    assert s.memory_compression_enabled is False
+
+
+def test_rejects_a_non_positive_context_window(monkeypatch):
+    """A window <= 0 fails fast at load, not deep in the trigger (Field(gt=0))."""
+    for var in _COMPACTION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COMPACTION_CONTEXT_WINDOW_TOKENS", "0")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_rejects_a_reserve_fraction_outside_the_unit_interval(monkeypatch):
+    """Reserve fractions must be in [0, 1] (Field(ge=0, le=1)) — a bad value is rejected at load."""
+    for var in _COMPACTION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("COMPACTION_RESERVE_FRACTION", "1.5")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+    monkeypatch.delenv("COMPACTION_RESERVE_FRACTION", raising=False)
+    monkeypatch.setenv("MICROCOMPACTION_RESERVE_FRACTION", "-0.1")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_lsp_defaults(monkeypatch):
+    for var in _LSP_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.lsp_enabled is True
+    assert s.lsp_server_command == "ty"
+    assert s.lsp_server_args == ["server"]
+    assert s.lsp_diagnostics_on_edit is True
+    assert s.lsp_request_timeout_s == 10.0
+
+
+def test_reads_lsp_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("LSP_ENABLED", "false")
+    monkeypatch.setenv("LSP_SERVER_COMMAND", "pylsp")
+    monkeypatch.setenv("LSP_SERVER_ARGS", '["-v"]')
+    monkeypatch.setenv("LSP_DIAGNOSTICS_ON_EDIT", "false")
+    monkeypatch.setenv("LSP_REQUEST_TIMEOUT_S", "2.5")
+    s = Settings(_env_file=None)
+    assert s.lsp_enabled is False
+    assert s.lsp_server_command == "pylsp"
+    assert s.lsp_server_args == ["-v"]
+    assert s.lsp_diagnostics_on_edit is False
+    assert s.lsp_request_timeout_s == 2.5
+
+
+def test_loads_lsp_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _LSP_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "LSP_ENABLED=false\n"
+        "LSP_SERVER_COMMAND=pylsp\n"
+        'LSP_SERVER_ARGS=["--check-parent-process"]\n'
+        "LSP_DIAGNOSTICS_ON_EDIT=false\n"
+        "LSP_REQUEST_TIMEOUT_S=5.0\n"
+    )
+    s = Settings(_env_file=str(env))
+    assert s.lsp_enabled is False
+    assert s.lsp_server_command == "pylsp"
+    assert s.lsp_server_args == ["--check-parent-process"]
+    assert s.lsp_diagnostics_on_edit is False
+    assert s.lsp_request_timeout_s == 5.0
+
+
+@pytest.mark.parametrize("bad", ["0", "-1.0"])
+def test_rejects_a_non_positive_lsp_request_timeout(monkeypatch, bad):
+    """A timeout <= 0 fails fast at load, not deep in a request (Field(gt=0))."""
+    for var in _LSP_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("LSP_REQUEST_TIMEOUT_S", bad)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_runtime_defaults(monkeypatch):
+    for var in _RUNTIME_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.runtime_enabled is True
+
+
+def test_stale_secret_store_env_vars_are_silently_ignored(monkeypatch):
+    """ADR-0015 §4 (clean break): the retired ``RUNTIME_SECRET_*`` family is deleted, not shimmed.
+
+    An env / ``.env`` still carrying one of the retired knobs must change nothing and print nothing —
+    ``extra="ignore"`` swallows it, and the fields are gone, so no reader can branch on them. Config
+    comes from one Settings chain at every ``XAPE_ENV`` (ADR-0021).
+    """
+    for stale in ("_STORE_MODEL_KEY", "_STORE_CONFIG", "_NAME"):
+        monkeypatch.setenv(f"RUNTIME_SECRET{stale}", "true")
+
+    s = Settings(_env_file=None)
+
+    assert [f for f in Settings.model_fields if f.startswith("runtime_secret")] == []
+    assert s.xape_env == "local"  # the surviving selector is untouched by the stale entries
+
+
+def test_reads_runtime_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("RUNTIME_ENABLED", "false")
+    s = Settings(_env_file=None)
+    assert s.runtime_enabled is False
+
+
+def test_loads_runtime_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _RUNTIME_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text("RUNTIME_ENABLED=false\n")
+    s = Settings(_env_file=str(env))
+    assert s.runtime_enabled is False
+
+
+def test_stale_durable_flow_env_vars_are_silently_ignored(monkeypatch):
+    """ADR-0019 §1 (clean break): the Durable Flow's knobs are deleted, not shimmed.
+
+    An env / ``.env`` still carrying ``RUNTIME_CHECKPOINT_STRATEGY`` or ``RUNTIME_WAIT_TIMEOUT_S``
+    must change nothing and print nothing — ``extra="ignore"`` swallows it and the fields are gone,
+    so no reader can branch on them. A previously *invalid* value (rejected at load by the old
+    ``Literal`` / ``gt=0`` validators) must now load cleanly for the same reason.
+    """
+    monkeypatch.setenv("RUNTIME_CHECKPOINT_STRATEGY", "hourly")
+    monkeypatch.setenv("RUNTIME_WAIT_TIMEOUT_S", "-1.0")
+
+    s = Settings(_env_file=None)
+
+    surviving = {"runtime_enabled", "runtime_max_requests"}
+    retired = [f for f in Settings.model_fields if f.startswith("runtime_") and f not in surviving]
+    assert retired == []
+    assert s.runtime_enabled is True  # the surviving gate is untouched by the stale entries
+
+
+def test_runtime_max_requests_is_unbounded_by_default_and_a_positive_count_when_set(monkeypatch):
+    """The headless request ceiling: unset = unbounded (REPL-identical); ``0`` is not a ceiling."""
+    assert Settings(_env_file=None).runtime_max_requests is None
+
+    monkeypatch.setenv("RUNTIME_MAX_REQUESTS", "200")
+    assert Settings(_env_file=None).runtime_max_requests == 200
+
+    monkeypatch.setenv("RUNTIME_MAX_REQUESTS", "0")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+# Sandboxing — config surface only; the default ``sandbox_mode="none"`` means no sandbox var is
+# required to build ``Settings``.
+
+
+def test_sandbox_defaults(monkeypatch):
+    for var in _SANDBOX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.sandbox_mode == "none"
+    assert s.sandbox_image == "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"
+    assert s.sandbox_timeout_s == 600.0
+
+
+def test_reads_sandbox_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("SANDBOX_MODE", "docker")
+    monkeypatch.setenv("SANDBOX_IMAGE", "python:3.13-slim")
+    monkeypatch.setenv("SANDBOX_TIMEOUT_S", "120.0")
+    s = Settings(_env_file=None)
+    assert s.sandbox_mode == "docker"
+    assert s.sandbox_image == "python:3.13-slim"
+    assert s.sandbox_timeout_s == 120.0
+
+
+def test_loads_sandbox_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _SANDBOX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text("SANDBOX_MODE=modal\nSANDBOX_IMAGE=python:3.11-slim\nSANDBOX_TIMEOUT_S=300.0\n")
+    s = Settings(_env_file=str(env))
+    assert s.sandbox_mode == "modal"
+    assert s.sandbox_image == "python:3.11-slim"
+    assert s.sandbox_timeout_s == 300.0
+
+
+def test_a_retired_credential_proxy_key_in_a_dotenv_is_ignored(tmp_path, monkeypatch):
+    """ADR-0016 §1 (clean break): a stale ``SANDBOX_CREDENTIAL_PROXY_ENABLED`` must not blow up.
+
+    The knobs are deleted with no shim, so an old ``.env`` carrying them still loads — ``extra="ignore"``
+    swallows the retired key exactly as ADR-0015 §9 handled its own — and the field is simply gone.
+    """
+    for var in _SANDBOX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "SANDBOX_MODE=docker\n"
+        "SANDBOX_CREDENTIAL_PROXY_ENABLED=true\n"
+        "SANDBOX_PROXY_IMAGE=mitmproxy/mitmproxy\n"
+    )
+
+    s = Settings(_env_file=str(env))
+
+    assert s.sandbox_mode == "docker"
+    assert not hasattr(s, "sandbox_credential_proxy_enabled")
+    assert not hasattr(s, "sandbox_proxy_image")
+
+
+@pytest.mark.parametrize("mode", ["none", "docker", "modal"])
+def test_sandbox_mode_accepts_each_valid_literal(monkeypatch, mode):
+    monkeypatch.setenv("SANDBOX_MODE", mode)
+    s = Settings(_env_file=None)
+    assert s.sandbox_mode == mode
+
+
+def test_sandbox_mode_rejects_unknown_value(monkeypatch):
+    """A value outside {none, docker, modal} fails fast at load, not inside the seam (Literal)."""
+    for var in _SANDBOX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SANDBOX_MODE", "firecracker")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+@pytest.mark.parametrize("bad", ["0", "-1.0"])
+def test_rejects_a_non_positive_sandbox_timeout(monkeypatch, bad):
+    """A sandbox timeout <= 0 fails fast at load, not deep in a remote sandbox (Field(gt=0))."""
+    for var in _SANDBOX_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("SANDBOX_TIMEOUT_S", bad)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+# Subagents
+
+
+def test_subagent_defaults(monkeypatch):
+    for var in _SUBAGENT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.subagent_max_parallel == 4  # concurrent-children cap (Gemini free-tier friendly)
+    assert s.subagent_max_requests == 25  # per-child UsageLimits(request_limit=…) runaway cap
+    assert s.subagent_result_max_bytes == 16_000  # the child-report truncation cap
+
+
+def test_reads_subagent_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("SUBAGENT_MAX_PARALLEL", "8")
+    monkeypatch.setenv("SUBAGENT_MAX_REQUESTS", "50")
+    monkeypatch.setenv("SUBAGENT_RESULT_MAX_BYTES", "32000")
+    s = Settings(_env_file=None)
+    assert s.subagent_max_parallel == 8
+    assert s.subagent_max_requests == 50
+    assert s.subagent_result_max_bytes == 32000
+
+
+@pytest.mark.parametrize(
+    "var", ["SUBAGENT_MAX_PARALLEL", "SUBAGENT_MAX_REQUESTS", "SUBAGENT_RESULT_MAX_BYTES"]
+)
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_rejects_non_positive_subagent_caps(monkeypatch, var, bad):
+    """Each subagent cap <= 0 fails fast at load, not deep in a fan-out (Field(gt=0))."""
+    for name in _SUBAGENT_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(var, bad)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+# Observability: Langfuse
+
+
+def test_langfuse_defaults(monkeypatch):
+    for var in _LANGFUSE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    assert s.langfuse_secret_key.get_secret_value() == ""
+    assert s.langfuse_public_key.get_secret_value() == ""
+    assert s.langfuse_base_url == "https://cloud.langfuse.com"
+
+
+def test_reads_langfuse_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "secret-123")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "public-456")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://jp.cloud.langfuse.com")
+    monkeypatch.setenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+    s = Settings(_env_file=None)
+    assert s.langfuse_secret_key.get_secret_value() == "secret-123"
+    assert s.langfuse_public_key.get_secret_value() == "public-456"
+    assert s.langfuse_base_url == "https://jp.cloud.langfuse.com"
+
+
+def test_reads_legacy_langfuse_host_from_process_env(monkeypatch):
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
+    monkeypatch.setenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+    s = Settings(_env_file=None)
+    assert s.langfuse_base_url == "https://us.cloud.langfuse.com"
+
+
+def test_loads_langfuse_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _LANGFUSE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text(
+        "LANGFUSE_SECRET_KEY=secret-dotenv\n"
+        "LANGFUSE_PUBLIC_KEY=public-dotenv\n"
+        "LANGFUSE_BASE_URL=https://jp.cloud.langfuse.com\n"
+    )
+    s = Settings(_env_file=str(env))
+    assert s.langfuse_secret_key.get_secret_value() == "secret-dotenv"
+    assert s.langfuse_public_key.get_secret_value() == "public-dotenv"
+    assert s.langfuse_base_url == "https://jp.cloud.langfuse.com"
+
+
+# Evals
+
+
+def test_eval_defaults(monkeypatch):
+    for var in _EVAL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    s = Settings(_env_file=None)
+    # Empty judge model = derive from the active provider; eval results use a separate project.
+    assert s.eval_judge_model == ""
+    assert s.eval_project_name == "xape-evals"
+
+
+def test_reads_eval_vars_from_process_env(monkeypatch):
+    monkeypatch.setenv("EVAL_JUDGE_MODEL", "gemini/gemini-2.5-flash")
+    monkeypatch.setenv("EVAL_PROJECT_NAME", "xape-evals-ci")
+    s = Settings(_env_file=None)
+    assert s.eval_judge_model == "gemini/gemini-2.5-flash"
+    assert s.eval_project_name == "xape-evals-ci"
+
+
+def test_loads_eval_vars_from_a_dotenv_file(tmp_path, monkeypatch):
+    for var in _EVAL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    env = tmp_path / ".env"
+    env.write_text("EVAL_JUDGE_MODEL=openrouter/some-model\nEVAL_PROJECT_NAME=proj-evals\n")
+    s = Settings(_env_file=str(env))
+    assert s.eval_judge_model == "openrouter/some-model"
+    assert s.eval_project_name == "proj-evals"
+
+
+def test_copying_env_example_does_not_activate_langfuse(monkeypatch):
+    """A copied example file leaves cloud tracing and evaluation credentials unset."""
+    for var in (*_LANGFUSE_ENV_VARS, *_EVAL_ENV_VARS):
+        monkeypatch.delenv(var, raising=False)
+    env_example = Path(__file__).parents[4] / ".env.example"
+    s = Settings(_env_file=str(env_example))
+    assert s.langfuse_secret_key.get_secret_value() == ""
+    assert s.langfuse_public_key.get_secret_value() == ""
+
+
+# .env.example drift is covered GLOBALLY (every field, both directions, no allowlist) by
+# tests/unit/xape/config/test_env_example_drift.py — it subsumes the per-section
+# ``test_env_example_lists_every_*_var`` guards that used to live here (ADR-0021).
+#
+# The "xape never imports kitaru unless recording is configured" invariant (ADR-0021 §5) is a
+# fresh-subprocess import check in tests/unit/xape/test_cli.py.
+
+
+# --- Compaction context window: derived from the active model (task: auto-size the window) ---
+#
+# A window that is too LARGE is the dangerous direction: both compaction tiers fire at
+# ``window * (1 - reserve)``, so an over-estimate puts BOTH above the endpoint's hard ceiling and the
+# request is truncated or rejected before compaction ever runs. That is what a 1M Gemini default did
+# in front of a 262k Qwen endpoint.
+
+_MODEL_ENV_VARS = (
+    "LLM_PROVIDER",
+    "GEMINI_MODEL",
+    "OPENROUTER_MODEL",
+    "MODAL_ENDPOINT_MODEL",
+    "COMPACTION_CONTEXT_WINDOW_TOKENS",
+)
+
+
+def _clear_model_env(monkeypatch):
+    for var in _MODEL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_context_window_is_derived_from_the_gemini_model(monkeypatch):
+    _clear_model_env(monkeypatch)
+
+    s = Settings(_env_file=None)
+
+    assert s.llm_provider == "gemini"
+    assert s.active_model == "gemini-3.8-flash"
+    assert s.compaction_context_window_tokens == 1_048_576
+    assert s.context_window_is_assumed is False
+    # Derived, not explicit — the mark must not be forged.
+    assert "compaction_context_window_tokens" not in s.model_fields_set
+
+
+def test_context_window_is_derived_from_the_modal_qwen_model(monkeypatch):
+    """262144 is READ from the served endpoint's ``max_model_len``, not guessed."""
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "modal")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "Qwen/Qwen3.6-35B-A3B-FP8")
+
+    s = Settings(_env_file=None)
+
+    assert s.compaction_context_window_tokens == 262_144
+    assert s.context_window_is_assumed is False
+
+
+def test_model_id_matching_is_case_insensitive_and_ignores_vendor_and_quant_suffixes(monkeypatch):
+    """The window does not depend on the vendor prefix or the quantization suffix."""
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "modal")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "some-vendor/QWEN3.6-35B-A3B-AWQ")
+
+    assert Settings(_env_file=None).compaction_context_window_tokens == 262_144
+
+
+def test_unknown_model_falls_back_conservatively_and_says_so(monkeypatch):
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "modal")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "meta-llama/Llama-3-70B-Instruct")
+
+    s = Settings(_env_file=None)
+
+    assert s.compaction_context_window_tokens == 200_000
+    # The operator must be TOLD: an assumption nobody sees is how a 4x-wrong window survives.
+    assert s.context_window_is_assumed is True
+
+
+def test_an_explicit_context_window_always_wins_and_silences_the_notice(monkeypatch):
+    """An operator who knows their endpoint overrides the table — and is not warned about it."""
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "modal")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "meta-llama/Llama-3-70B-Instruct")
+    monkeypatch.setenv("COMPACTION_CONTEXT_WINDOW_TOKENS", "8192")
+
+    s = Settings(_env_file=None)
+
+    assert s.compaction_context_window_tokens == 8192
+    assert s.context_window_is_assumed is False
+    assert "compaction_context_window_tokens" in s.model_fields_set
+
+
+def test_an_explicit_window_equal_to_the_derived_value_is_still_explicit(monkeypatch):
+    """Anti-sentinel: a value comparison cannot tell this from "nobody set it"; fields_set can."""
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("COMPACTION_CONTEXT_WINDOW_TOKENS", "1048576")
+
+    s = Settings(_env_file=None)
+
+    assert s.compaction_context_window_tokens == 1_048_576
+    assert "compaction_context_window_tokens" in s.model_fields_set
+    assert s.context_window_is_assumed is False
+
+
+def test_active_model_follows_the_provider(monkeypatch):
+    _clear_model_env(monkeypatch)
+    monkeypatch.setenv("OPENROUTER_MODEL", "some/router-model")
+    monkeypatch.setenv("MODAL_ENDPOINT_MODEL", "some/modal-model")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+
+    for provider, expected in (
+        ("gemini", "gemini-3.8-flash"),
+        ("openrouter", "some/router-model"),
+        ("modal", "some/modal-model"),
+    ):
+        monkeypatch.setenv("LLM_PROVIDER", provider)
+        assert Settings(_env_file=None).active_model == expected

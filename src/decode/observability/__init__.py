@@ -1,0 +1,28 @@
+"""Observability — xape's Langfuse tracing surface (ADR-0024).
+
+Presence-based via Langfuse keys: a silent no-op when unset, so xape is byte-identical without
+credentials. Re-exports the public surface so callers write ``observability.init_tracing()``.
+Importing this package is cheap and side-effect-free — nothing is configured until
+:func:`init_tracing` runs.
+"""
+
+from __future__ import annotations
+
+from xape.observability.metadata import git_sha, trace_metadata
+from xape.observability.tracing import (
+    init_tracing,
+    is_tracing_active,
+    record_output,
+    reset_tracing,
+    root_span,
+)
+
+__all__ = [
+    "git_sha",
+    "init_tracing",
+    "is_tracing_active",
+    "record_output",
+    "reset_tracing",
+    "root_span",
+    "trace_metadata",
+]
