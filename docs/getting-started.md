@@ -34,6 +34,15 @@ cd xape-ollama
 .\build.ps1 install-cli
 ```
 
+This checkout configures uv to copy packages instead of hardlinking them, avoiding
+OneDrive's "incompatible hardlinks" error (Windows error 396). If an earlier
+installation failed with that error, rerun `.\build.ps1 install`.
+
+To run from this checkout without activating its virtual environment, use
+`uv run xape`. For a bare `xape` command outside the checkout, run
+`.\build.ps1 install-cli`; if it is not on PATH, run `uv tool update-shell` and
+restart PowerShell.
+
 Verify your installation:
 ```bash
 xape --version

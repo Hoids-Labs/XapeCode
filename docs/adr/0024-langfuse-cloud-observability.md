@@ -5,9 +5,8 @@
 
 ## Context
 
-Runtime traces currently use Opik, which also owns the repository's evaluation datasets,
-experiments, regression suite, and trace-mining commands. The requested migration is limited to
-runtime tracing and evaluation-result reporting; replacing those Opik workflows is deferred.
+Runtime traces, evaluation datasets, experiments, regression suites, and trace mining need one
+observability platform. Langfuse provides tracing, evaluation orchestration, and score reporting.
 Tracing must remain optional, preserve the current agent behavior when disabled, and avoid changing
 the process-global OpenTelemetry environment used by other integrations.
 
@@ -20,9 +19,9 @@ the process-global OpenTelemetry environment used by other integrations.
    authentication and real-time ingestion header.
 2. **Trace grouping follows xape sessions.** REPL turns and headless runs propagate the xape
    session id, trace metadata, input, and output using Langfuse's supported OTEL attributes.
-3. **Evaluation orchestration stays on Opik.** Existing datasets, experiments, regression
-   workflows, and trace mining are not replaced. After evaluation, numeric scores are additionally
-   attached to the corresponding Langfuse sessions when Langfuse credentials are configured.
+3. **Langfuse owns evaluation orchestration.** Datasets, experiments, regression workflows, and
+   trace mining use Langfuse. After evaluation, numeric scores are attached to the corresponding
+   Langfuse sessions when Langfuse credentials are configured.
 4. **No credentials means no reporting.** With neither Langfuse key set, tracing remains a no-op
    and evaluation commands report that Langfuse score reporting was skipped. Supplying only one key
    is an explicit configuration error.
@@ -32,11 +31,9 @@ the process-global OpenTelemetry environment used by other integrations.
 
 ## Consequences
 
-- Runtime traces and numeric evaluation scores are visible in Langfuse Cloud; existing Opik
-  evaluation orchestration and trace-mining commands continue to require `OPIK_API_KEY`.
-- Langfuse tracing is activated by both API keys, while eval workflows remain usable without
-  Langfuse by explicitly skipping score reporting.
-- Trace metadata uses Langfuse's trace metadata convention. Opik trace mining does not automatically
-  migrate and remains a separate deferred workflow.
-- Langfuse is a runtime dependency; Opik remains a development dependency for the top-level evals
-  package.
+- Runtime traces, datasets, experiments, and numeric evaluation scores share Langfuse.
+- Langfuse tracing is activated by both API keys. Commands that require Langfuse explicitly report
+  missing credentials rather than pretending to publish results.
+- Trace metadata uses Langfuse's trace metadata convention, including the shared xape session id
+  used to join evaluation runs and Kitaru recordings.
+- Langfuse is a runtime dependency shared by the top-level evals package.

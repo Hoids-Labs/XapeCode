@@ -131,8 +131,8 @@ and the current Pydantic AI docs, because they shape the design:
    the sandbox-bash `{"cache": False}` in `runtime/flow.py`), so the default caching stands and `agent`
    is never added to the cache-disable set. Documented ceilings: nested child model calls are **not**
    individual replay anchors, a `xape replay --model` swap does not reach inside a child, and child
-   token spend is invisible until Opik lands (M10). Child model = parent model (`AgentDef` has no
-   `model` field, by design). **Closed by M10 (ADR-0014):** child token spend is now visible in Opik
+   token spend is invisible until observisibilty lands (M10). Child model = parent model (`AgentDef` has no
+   `model` field, by design). **Closed by M10 (ADR-0014):** child token spend is now visible in
    traces — the child `agent.run()` nests inside the parent turn's `chat_turn` trace (same asyncio task
    / contextvars), so per-child token usage rides its own spans.
 
@@ -198,10 +198,10 @@ flowchart TD
 - **One Agent, re-entered — not rebuilt.** The child reuses the built model + client via the module
   seam, so `agent.override(model=…)` covers parent + children in tests.
 - **Seams left for later:** a second subagent + a validated `subagent_type` param; bridging children's
-  events to the TUI (live sub-progress); usage threading + per-child cost once Opik lands (M10); a
+  events to the TUI (live sub-progress); a
   deployed-stack proof that a headless subagent replays.
-- **Per-child cost is now delivered (M10, ADR-0014).** The "per-child cost once Opik lands" seam above is
-  closed: an Explore child's `agent.run()` nests inside the parent turn's Opik trace, so per-child token
+- **Per-child cost is delivered through Langfuse (ADR-0024).** An Explore child's `agent.run()`
+  nests inside the parent turn's Langfuse trace, so per-child token
   spend shows on its own spans. The remaining seams stay open.
 - **Risks to confirm during implementation:** (a) the module semaphore's event-loop affinity — created
   per running loop so it is safe under both the single REPL loop and Kitaru's per-call loops; (b) that

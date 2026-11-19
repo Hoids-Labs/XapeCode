@@ -5,7 +5,7 @@ Date: 2026-09-09
 
 Supersedes [ADR-0015](0015-environment-bucket-secrets.md) §§1–3, 5, 7 (the Environment Bucket and the
 `XAPE_ENV`-gated source chain) and [ADR-0020](0020-remote-headless-on-modal.md) §11 (the Modal Secret picks
-`XAPE_ENV`). ADR-0015 §4 (the deleted `RUNTIME_SECRET_*` knobs), §8 (Opik projects follow the environment) and
+`XAPE_ENV`). ADR-0015 §4 (the deleted `RUNTIME_SECRET_*` knobs) and
 §9 (the `.env.example` drift test) stand unchanged; §6 was already moot.
 
 ## Context
@@ -32,8 +32,8 @@ spec *specifically to keep a spawn from inheriting a bucket*. A store with one r
 the same system works to avoid, is not a store — it is a coupling.
 
 Meanwhile the question `XAPE_ENV` is genuinely good at answering was already being answered elsewhere and
-well: `xape-sandbox-<env>` (the nested Modal sandbox app) and `xape-<env>` (the Opik project) both derive
-from it, and both exist so a `local` experiment cannot disturb a `prod` one.
+well: `xape-sandbox-<env>` (the nested Modal sandbox app) derives from it so a `local` experiment
+cannot disturb a `prod` one. Langfuse projects are selected separately by their API keys.
 
 There is a second, quieter problem. ADR-0020 §11 put `XAPE_ENV` **inside** the Modal Secret. A Secret is
 mutable by an operator and re-read at container start, so the deployment's identity ("which environment am I?")
@@ -52,7 +52,7 @@ rewritten to `XAPE_ENV=local` while every container kept reading `prod`.
    feeds the chain is the platform's own: a developer's `.env` on a laptop, the Modal Secret in a container.
 
 2. **One environment, one deployment, one Secret.** Both Modal apps take the `-<env>` suffix their sandbox app
-   and Opik project already had: `xape-headless-<env>` and `xape-kitaru-worker-<env>`, each running with
+   already had: `xape-headless-<env>` and `xape-kitaru-worker-<env>`, each running with
    the Secret of the same name. `XAPE_ENV=prod xape remote deploy` publishes `xape-headless-prod`; a
    plain deploy publishes `xape-headless-local`. `xape remote run|attempts|logs` resolve the same name
    from `settings.xape_env`, so the launcher and the deployment cannot mean different apps. A Secret carries
@@ -106,7 +106,7 @@ flowchart TB
         A_PROC --> A_SET
         A_DOT --> A_SET
         A_DEF --> A_SET
-        A_SET --> A_NAMES["names, and only names:<br/>xape-headless-&lt;env&gt;<br/>xape-kitaru-worker-&lt;env&gt;<br/>xape-sandbox-&lt;env&gt;<br/>Opik xape-&lt;env&gt;"]
+        A_SET --> A_NAMES["names, and only names:<br/>xape-headless-&lt;env&gt;<br/>xape-kitaru-worker-&lt;env&gt;<br/>xape-sandbox-&lt;env&gt;"]
         A_KIT["kitaru<br/>recording · replay · evals"]
         A_SET -. "imported ONLY when recording<br/>is configured, or under a Worker Task" .-> A_KIT
     end

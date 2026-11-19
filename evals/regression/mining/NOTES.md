@@ -1,7 +1,7 @@
-# Historical Opik mining session — 2026-09-11, `xape-prod`
+# Trace mining session — 2026-09-11, `xape-prod`
 
-This predates the migration to Langfuse. Its trace IDs, outputs, and commands document provenance
-only; the active miner now queries Langfuse, and historical Opik traces are not imported.
+Its trace IDs, outputs, and commands document case provenance.
+For current trace mining commands, see the [evals guide](../../README.md#trace-mining).
 
 What one **Trace Mining** pass over the live project found, what became a
 [Regression Case](../README.md#mined-cases), and what was deliberately left alone (ADR-0022 §8,
@@ -39,7 +39,7 @@ design, so the run used `2026-08-12T00:00:00Z`.
 | `errors \| UsageLimitExceeded \| glob \| -` | `01a08d79` | skipped — designed request ceiling |
 | `denied \| - \| read \| gemini-3.5-flash` | `01a08f1a` | skipped — task 163's own deliberate gate probe |
 | `low-quality` | none | the `response_quality` rule is one day old; empty window |
-| *(the known `ModelHTTPError 400`)* | not in Opik | not reproducible offline — no case (see "Case zero" below) |
+| *(the known `ModelHTTPError 400`)* | not in the project | not reproducible offline — no case (see "Case zero" below) |
 
 ## What was picked, and why
 
@@ -88,7 +88,7 @@ itself). The token bill is the repository's size, not a regression; the wasted l
 
 ## Case zero — the `ModelHTTPError 400`
 
-The known failure is NOT in the live Opik project: both `ModelHTTPError` traces there are 503s. Its
+The known failure is NOT in the sampled traces: both `ModelHTTPError` traces there are 503s. Its
 evidence lived in the managed Kitaru workspace, which answers `HTTP 404` today (`kitaru status`), so
 the offending request body cannot be read back.
 
@@ -106,7 +106,7 @@ history holding something malformed. Three fixtures were run for real against th
 None reproduce a 400, and the third shows xape already defending the most plausible
 malformed-history path. No case ships for it: a case that cannot fail proves nothing.
 
-## Provenance in Opik
+## Case provenance
 
 Each picked trace is tagged `regression-case` in the live project
 (`client.update_trace(id, tags=[…])`, existing tags preserved), so the online view links a bad run to

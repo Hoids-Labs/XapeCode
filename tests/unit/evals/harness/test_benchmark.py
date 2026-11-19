@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from xape.config.settings import settings
 from evals.harness.benchmark import (
     BenchmarkSelectionError,
     default_job_name,
@@ -26,6 +25,7 @@ from evals.harness.datasets import task_checksum
 from evals.harness.langfuse_experiments import ExperimentCase, ExperimentItem
 from evals.harness.task_loader import load_benchmark_task
 from evals.harness.trial import TrialResult
+from xape.config.settings import settings
 
 STARTED_AT = datetime(2026, 9, 15, 12, 0, 0, tzinfo=UTC)
 

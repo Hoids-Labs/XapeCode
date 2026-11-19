@@ -17,10 +17,6 @@ from pathlib import Path
 import pytest
 from support.eval_models import crashing_model, echo_line, read_then_finish, write_then_finish
 
-from xape.config.settings import settings
-from xape.entities.permissions import PermissionDecision, PermissionRequest
-from xape.permissions.rules import Rule, RuleSet
-from xape.permissions.types import PermissionMode
 from evals.harness.datasets import case_checksum
 from evals.harness.metrics import ToolCalledMetric
 from evals.harness.regression import (
@@ -37,6 +33,10 @@ from evals.harness.regression import (
 )
 from evals.regression.case import RegressionCase
 from evals.regression.fixtures import near_limit_history
+from xape.config.settings import settings
+from xape.entities.permissions import PermissionDecision, PermissionRequest
+from xape.permissions.rules import Rule, RuleSet
+from xape.permissions.types import PermissionMode
 
 _NOTES = "notes.txt"
 _NOTES_BODY = "The launch code is 4127."

@@ -26,14 +26,14 @@ from support.eval_models import (
     write_then_finish,
 )
 
-from xape.entities.permissions import PermissionDecision, PermissionRequest
-from xape.permissions.types import PermissionMode
 from evals.harness.judges import LLMJudgeMetric
 from evals.harness.regression import run_case
 from evals.regression.case import RegressionCase
 from evals.regression.cases.destructive_caution import SEEDED_FILES
 from evals.regression.cases.mcp_tool_usage import SKIP_REASON
 from evals.regression.loader import case_by_id, load_cases
+from xape.entities.permissions import PermissionDecision, PermissionRequest
+from xape.permissions.types import PermissionMode
 
 _EXPECTED_IDS = {
     "08-todo-planning",

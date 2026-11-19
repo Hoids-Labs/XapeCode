@@ -45,7 +45,7 @@ All related choices for this feature, together:
    `xape replay`, `xape run --hitl` (and all wait plumbing), and the durable `sleep`
    seam are DELETED — no stubs, no shims. `xape run` is `asyncio.run` around the same
    `build_agent()` the REPL uses: bypass permissions, `ask_user` no-op, stdout = answer only.
-   Guard chain, Model Override (`--model`), sandbox Workspace, Hand-back, and Opik tracing
+   Guard chain, Model Override (`--model`), sandbox Workspace, Hand-back, and Langfuse tracing
    are preserved on the plain path (Hand-back now runs in the runner process — the
    "inside the flow" constraint died with the flow). `build_agent`'s `flow_mode` /
    keep-alive-free client die too (their rationale was 0.18's per-call event loops). HITL is
@@ -77,8 +77,8 @@ All related choices for this feature, together:
    dead `get_secret` import is re-implemented on the 0.22.2 client's named-secrets API
    against the managed workspace. `scripts/kitaru_bootstrap_api_key.py` (local-server
    bootstrap) is deleted.
-6. **Observability is untouched.** Logfire→OTLP→Opik (ADR-0014) stays as-is; the adapter
-   composes with OTel. Kitaru is fed by the adapter, Opik by OTLP — one instrumentation was
+6. **Observability is independent.** Logfire→OTLP→Langfuse ([ADR-0024](0024-langfuse-cloud-observability.md))
+   composes with the adapter through OTel. Kitaru is fed by the adapter, Langfuse by OTLP — one instrumentation was
    NOT unified in this round (rejected: JSONL importer pipeline — more moving parts, weaker
    replay fidelity than adapter recording).
 
@@ -121,8 +121,8 @@ flowchart LR
     AV --> WK
     WRUN -. "hard-fail if recording\nunavailable" .-> SESS
 
-    OPIK["Opik (OTLP)\nuntouched — ADR-0014"]:::obs
-    AGENT -. "logfire spans" .-> OPIK
+    LANGFUSE["Langfuse (OTLP)\nADR-0024"]:::obs
+    AGENT -. "logfire spans" .-> LANGFUSE
 
     classDef xape fill:#1e6091,stroke:#0b2e44,color:#ffffff
     classDef seam fill:#e9c46a,stroke:#8a6d1d,color:#000000
@@ -140,7 +140,7 @@ not anticipate; the rest stands unchanged.
 1. **§4, input contract — two recorded shapes are also read as a prompt.** kitaru builds a replay's
    agent task with `inputs=baseline.inputs`, i.e. it hands the baseline Kitaru Session's own
    recorded inputs to the Agent Version verbatim, and neither producer emits `{"task": …}`:
-   `kitaru-pydantic-ai` records `inputs = ctx.prompt` (a bare JSON string) and the Opik importer
+   `kitaru-pydantic-ai` records `inputs = ctx.prompt` (a bare JSON string) and the Langfuse importer
    records `{"input": "<prompt>", …}`. So the shipped `_task_from_inputs` accepts all three —
    canonical `{"task", "model"}` still wins, the other two are each the recorded prompt verbatim,
    and anything else (a list, a number, a structured `input`) still hard-fails, so a Worker replay
@@ -178,4 +178,4 @@ not anticipate; the rest stands unchanged.
 
 ### Amendment (2026-09-10) — §2 pin lifted
 
-`pydantic-ai-slim[google,openai]>=2.40,<2.41` with `kitaru-pydantic-ai>=0.2.1` (the adapter's own cap is `<2.41`) and `kitaru>=0.26`; see [ADR-0022](0022-evals-v2-own-harbor-on-opik.md) §12.
+`pydantic-ai-slim[google,openai]>=2.40,<2.41` with `kitaru-pydantic-ai>=0.2.1` (the adapter's own cap is `<2.41`) and `kitaru>=0.26`; see ADR-0022 §12.

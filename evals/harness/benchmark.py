@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from xape.config.settings import settings
 from evals.harness.aggregates import (
     BenchmarkSummary,
     Rollup,
@@ -30,7 +29,8 @@ from evals.harness.task_loader import BenchmarkTask, load_benchmark_tasks
 
 # ``git_sha`` lives with the trial runner (it stamps every ``result.json``); it is re-exported here
 # because the regression track reads a run's provenance from this module (``regression.py``).
-from evals.harness.trial import TrialResult, xape_version, git_sha, run_trial
+from evals.harness.trial import TrialResult, git_sha, run_trial, xape_version
+from xape.config.settings import settings
 
 if TYPE_CHECKING:
     from evals.harness.task_loader import Difficulty

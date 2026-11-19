@@ -6,7 +6,7 @@ Date: 2026-09-15
 Supersedes [ADR-0020](0020-remote-headless-on-modal.md) §5 (the Modal-hosted Kitaru Worker + its
 `none` Agent Version) and the `xape-kitaru-worker` half of §4 (its Modal Secret). ADR-0020 §§1–3,
 the `xape-headless` half of §4, §6 and every Amendment about the Modal Headless App stand.
-[ADR-0019](0019-kitaru-replay-runtime.md) and [ADR-0022](0022-evals-v2-own-harbor-on-opik.md) §11 (a
+[ADR-0019](0019-kitaru-replay-runtime.md) and ADR-0022 §11 (a
 Kitaru Server is one URL) stand unchanged.
 
 ## Context

@@ -21,10 +21,6 @@ from support.eval_models import (
     write_then_finish,
 )
 
-from xape.config.settings import settings
-from xape.entities.permissions import PermissionDecision, PermissionRequest
-from xape.permissions.rules import Rule, RuleSet
-from xape.permissions.types import PermissionMode
 from evals.harness.driver import (
     CAP_STOP_TEXT,
     EvalRunRecord,
@@ -32,6 +28,10 @@ from evals.harness.driver import (
     run_agent_once,
     run_agent_once_sync,
 )
+from xape.config.settings import settings
+from xape.entities.permissions import PermissionDecision, PermissionRequest
+from xape.permissions.rules import Rule, RuleSet
+from xape.permissions.types import PermissionMode
 
 _NOTES = "notes.txt"
 _NOTES_BODY = "remember to ship the eval suite"

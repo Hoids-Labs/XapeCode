@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from xape.config.settings import settings
 from evals.harness.datasets import REGRESSION_SUITE_NAME, RegressionSurfaces
 from evals.harness.metrics import ScoreResult
 from evals.harness.test_suite import (
@@ -20,6 +19,7 @@ from evals.harness.test_suite import (
     run_test_suite,
 )
 from evals.regression.case import RegressionCase
+from xape.config.settings import settings
 
 
 def _case(case_id: str, prompt: str = "do the thing", **overrides: object) -> RegressionCase:

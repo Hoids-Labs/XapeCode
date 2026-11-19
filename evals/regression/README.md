@@ -129,8 +129,7 @@ The first mining session (2026-09-11, over `xape-prod`; raw output and picks in
 | `21-empty-model-response` | easy | Three model turns came back with no parts at all, so the run died on the retry ceiling with no answer. | `answered_without_error` | `019f5cd5-…` | `unfixed` |
 | `22-guessed-file-path` | easy | The first tool call opened a guessed path (`README`) the tree does not hold, burning a leg on the retry — in both recorded runs. | `read_path_exists` | `01a08614-…` | `unfixed` |
 
-These cases were mined from historical Opik traces before the Langfuse migration. Their source IDs
-are provenance only; historical Opik traces are not imported.
+Their source IDs document the provenance of these cases.
 
 Two metrics were added for these (`evals/harness/metrics.py`): `AnsweredWithoutErrorMetric` (the run
 ended with an answer and no agent error) and

@@ -30,13 +30,13 @@ from support.eval_models import (
     web_fetch_then_finish,
 )
 
-from xape.services.lsp import service as lsp_service
 from evals.harness.judges import LLMJudgeMetric
 from evals.harness.regression import run_case
 from evals.regression.case import RegressionCase
 from evals.regression.cases.diff_minimality import _MODULE, _MODULE_BODY
 from evals.regression.cases.plan_mode_discipline import _APP, _APP_BODY
 from evals.regression.loader import case_by_id, load_cases
+from xape.services.lsp import service as lsp_service
 
 _EXPECTED_IDS = {
     "01-read-vs-cat",

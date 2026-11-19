@@ -26,16 +26,6 @@ from pydantic_ai.messages import ModelResponse
 from pydantic_ai.usage import RunUsage
 from support.eval_models import constant_text, echo_line, read_then_finish, write_then_finish
 
-from xape.agent.deps import AgentDeps
-from xape.agent.factory import build_agent
-from xape.agent.loop import AgentTurnHandler
-from xape.config.settings import settings
-from xape.context.compaction import CompactOutcome, reserve_threshold, should_compact
-from xape.entities.permissions import PermissionDecision, PermissionRequest
-from xape.memory.service import assemble_memory
-from xape.permissions.gate import PermissionGate
-from xape.permissions.types import PermissionMode
-from xape.tools.askuser import deny_user_question_resolver
 from evals.harness.judges import LLMJudgeMetric
 from evals.harness.regression import run_case
 from evals.regression.case import RegressionCase
@@ -51,6 +41,16 @@ from evals.regression.cases.no_hallucinated_files import MISSING_FILE, SEEDED_FI
 from evals.regression.cases.template_compliance import REQUIRED_HEADERS
 from evals.regression.fixtures.conversation import _estimate_tokens
 from evals.regression.loader import case_by_id, load_cases
+from xape.agent.deps import AgentDeps
+from xape.agent.factory import build_agent
+from xape.agent.loop import AgentTurnHandler
+from xape.config.settings import settings
+from xape.context.compaction import CompactOutcome, reserve_threshold, should_compact
+from xape.entities.permissions import PermissionDecision, PermissionRequest
+from xape.memory.service import assemble_memory
+from xape.permissions.gate import PermissionGate
+from xape.permissions.types import PermissionMode
+from xape.tools.askuser import deny_user_question_resolver
 
 _EXPECTED_IDS = {
     "15-memory-obedience",

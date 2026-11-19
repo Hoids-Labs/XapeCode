@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from xape.config.settings import settings
 from evals.harness.task_loader import BenchmarkTask
+from xape.config.settings import settings
 
 BENCHMARK_DATASET_NAME = "xape-benchmark"
 REGRESSION_DATASET_NAME = "xape-regression"

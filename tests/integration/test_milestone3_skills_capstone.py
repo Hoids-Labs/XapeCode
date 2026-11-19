@@ -81,9 +81,7 @@ _TIER3_REF_MARKER = "Embed the cover page"  # a known line of the bundled file, 
 @pytest.fixture(autouse=True)
 def _fake_gemini_key(mocker):
     """Let ``build_agent`` construct the Gemini provider offline (the model is overridden)."""
-    mocker.patch(
-        "xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False
-    )
+    mocker.patch("xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False)
 
 
 # --- scripted, capturing model (mirrors test_skills.py / test_orchestration.py) --------------

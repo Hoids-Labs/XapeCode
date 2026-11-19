@@ -641,8 +641,7 @@ def main(
 
     if not entrypoint.is_file():
         raise click.ClickException(
-            f"no xape entrypoint at {entrypoint} — run `make install` in {repo} or pass "
-            "--xape-bin."
+            f"no xape entrypoint at {entrypoint} — run `make install` in {repo} or pass --xape-bin."
         )
     if not dry_run:
         # The laptop Worker chdirs here for every spawn, so it must exist before the first task is

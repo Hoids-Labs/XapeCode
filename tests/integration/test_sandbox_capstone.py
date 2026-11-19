@@ -68,9 +68,7 @@ _BASH = bash_mod.BASH_TOOL_NAME
 @pytest.fixture(autouse=True)
 def _fake_gemini_key(mocker) -> None:
     """Let ``build_agent`` construct the Gemini provider offline (the model is always overridden)."""
-    mocker.patch(
-        "xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False
-    )
+    mocker.patch("xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False)
 
 
 @pytest.fixture
@@ -1073,9 +1071,7 @@ async def test_real_docker_isolated_workspace_roundtrip_and_handback(tmp_path: P
         # 1. One truthful tree: bash AND the file backend both see the cloned file.
         seen = await executor.run("cat README.md", cwd=workspace, timeout_s=30.0)
         assert seen.exit_code == 0 and "cloned-into-workspace" in seen.stdout
-        assert (
-            await executor._backend.read_bytes("README.md")
-        ).xape() == "cloned-into-workspace\n"
+        assert (await executor._backend.read_bytes("README.md")).xape() == "cloned-into-workspace\n"
 
         # 2. A bash-written file is host-visible on the mount (.xape/sandbox).
         await executor.run("echo agent-made > new.txt", cwd=workspace, timeout_s=30.0)

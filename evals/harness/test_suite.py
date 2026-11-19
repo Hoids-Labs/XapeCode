@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from xape.config.settings import settings
 from evals.harness.datasets import (
     GLOBAL_ASSERTIONS,
     REGRESSION_SUITE_NAME,
@@ -22,6 +21,7 @@ from evals.harness.langfuse_experiments import experiment_result, item_input, it
 from evals.harness.regression import make_regression_task_fn
 from evals.regression.case import RegressionCase
 from evals.regression.loader import load_cases, runnable_cases, select_cases
+from xape.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

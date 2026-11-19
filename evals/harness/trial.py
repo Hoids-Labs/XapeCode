@@ -51,8 +51,6 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from xape.config.settings import Settings, settings
-from xape.observability import git_sha as resolve_git_sha
 from evals.harness.seed import seed_task_repo
 from evals.harness.task_loader import BenchmarkTask
 from evals.harness.verifier import (
@@ -61,6 +59,8 @@ from evals.harness.verifier import (
     VerifierResult,
     grade_checkout,
 )
+from xape.config.settings import Settings, settings
+from xape.observability import git_sha as resolve_git_sha
 
 logger = logging.getLogger(__name__)
 

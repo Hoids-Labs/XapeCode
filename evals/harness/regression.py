@@ -28,8 +28,6 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from xape.config.settings import settings
-from xape.tools.bash import reset_executor
 from evals.harness.datasets import dataset_items, langfuse_client, regression_items_for_dataset
 from evals.harness.driver import run_agent_once_sync
 from evals.harness.langfuse_experiments import (
@@ -41,6 +39,8 @@ from evals.harness.langfuse_experiments import (
 from evals.harness.metrics import BaseMetric, ScoreResult
 from evals.regression.case import RegressionCase
 from evals.regression.loader import load_cases, runnable_cases, select_cases
+from xape.config.settings import settings
+from xape.tools.bash import reset_executor
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager

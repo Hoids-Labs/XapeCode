@@ -197,9 +197,7 @@ def test_every_server_gets_only_the_laptop_workers_version():
     """Kitaru Workers run on the operator's machine only (ADR-0023): one docker spec, their paths."""
     specs = desired_versions(repo=REPO, xape_bin=REPO / ".venv/bin/xape", harness_home=HOME)
 
-    assert specs == [
-        VersionSpec(xape_bin=REPO / ".venv/bin/xape", harness_home=HOME, repo=REPO)
-    ]
+    assert specs == [VersionSpec(xape_bin=REPO / ".venv/bin/xape", harness_home=HOME, repo=REPO)]
 
 
 # --- what "already registered" means ---------------------------------------------------------------

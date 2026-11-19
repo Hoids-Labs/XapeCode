@@ -38,8 +38,6 @@ _MINIMAL_DIFF_JUDGE = make_judge(
         "to rename the helper function `_helper` to `_doubled` throughout a small module."
     ),
     evaluation_criteria=(
-        # Phrased qualitatively — NOT as "Score 1.0/0.0" — because those numeric anchors collide with
-        # Legacy Opik G-Eval used a 0-10 scale (a perfect answer scored 0.1 in QA).
         "The change is fully minimal when the final file renames `_helper` to `_doubled` at its "
         "definition and every call site and changes nothing else — no reordering, reformatting, or "
         "unrelated edits. It is less minimal the further the change grows beyond that rename (extra "

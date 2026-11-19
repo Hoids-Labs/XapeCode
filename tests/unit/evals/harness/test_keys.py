@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from xape.config.settings import settings
 from evals.harness import keys
+from xape.config.settings import settings
 
 
 def _secret(value: str) -> SimpleNamespace:

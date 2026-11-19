@@ -56,7 +56,6 @@ under `evals/regression/cases/`. Keep the source trace and session IDs in the ca
 
 ## Kitaru imports
 
-`python -m evals kitaru import` imports selected Langfuse traces as Kitaru Sessions. Historical
-Opik traces are not imported. The standalone parser
+`python -m evals kitaru import` imports selected Langfuse traces as Kitaru Sessions. The standalone parser
 [`importers/langfuse_importer.py`](../importers/langfuse_importer.py) is registered by
 [`scripts/bootstrap_kitaru.py`](../scripts/bootstrap_kitaru.py).

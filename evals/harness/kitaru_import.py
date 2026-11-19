@@ -331,9 +331,9 @@ def _as_dict(record: Any) -> dict[str, Any]:
 
 def open_source(project: str | None = None) -> ThreadSource:
     """A :class:`ThreadSource` over the configured Langfuse project."""
-    from xape.config.settings import settings
     from evals.harness.datasets import langfuse_client
     from evals.harness.mine import live_project_name
+    from xape.config.settings import settings
 
     target = project or live_project_name()
     return ThreadSource(

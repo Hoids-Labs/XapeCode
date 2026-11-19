@@ -32,10 +32,10 @@ from pydantic import SecretStr
 from support.benchmark_tasks import CANARY_LINE, write_task_dir
 from support.fake_xape import FAKE_BRANCH, write_fake_xape
 
-from xape.config.settings import Settings
 from evals.harness import trial as trial_module
 from evals.harness.task_loader import BenchmarkTask, load_benchmark_task
 from evals.harness.trial import TrialResult, child_env, run_trial
+from xape.config.settings import Settings
 
 TRIAL_ID = "0a1b2c3d"
 

@@ -278,8 +278,8 @@ def open_experiment(name: str) -> tuple[list[Any], dict[str, Any] | None]:
     """
     from datetime import UTC, datetime
 
-    from xape.config.settings import settings
     from evals.harness.datasets import langfuse_client
+    from xape.config.settings import settings
 
     client = langfuse_client()
     try:

@@ -41,8 +41,6 @@ _GROUNDED_ANSWER_JUDGE = make_judge(
         "fetched page states."
     ),
     evaluation_criteria=(
-        # Phrased qualitatively — NOT as "Score 1.0/0.0" — because those numeric anchors collide with
-        # Legacy Opik G-Eval used a 0-10 scale (a perfect answer scored 0.1 in QA).
         f"The answer is fully correct when it (`output`) states the rate limit as {_RATE_LIMIT!r} — "
         "the value the served page contains. It is incorrect when it gives any other number, or "
         "refuses/guesses with a value not grounded in the fetched page."

@@ -8,8 +8,8 @@ from typing import Any
 
 import litellm
 
-from xape.config.settings import settings
 from evals.harness.metrics import BaseMetric, ScoreResult
+from xape.config.settings import settings
 
 DEFAULT_GEMINI_JUDGE = "gemini/gemini-3.8-flash"
 MODAL_PROXY_PLACEHOLDER_API_KEY = "modal-proxy"

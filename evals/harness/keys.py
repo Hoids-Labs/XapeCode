@@ -22,8 +22,8 @@ def _provider_key_missing(provider: str) -> str | None:
 
 def eval_keys_missing(*, require_provider: bool = True) -> list[str]:
     """Return missing Langfuse and inference credentials for the selected workflow."""
-    from xape.config.settings import settings
     from evals.harness.judges import judge_provider
+    from xape.config.settings import settings
 
     missing: list[str] = []
     if not settings.langfuse_public_key.get_secret_value().strip():

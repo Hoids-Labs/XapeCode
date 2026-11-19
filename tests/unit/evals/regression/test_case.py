@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from xape.permissions.types import PermissionMode
 from evals.regression.case import DIFFICULTIES, RegressionCase
 from evals.regression.loader import load_cases
+from xape.permissions.types import PermissionMode
 
 
 def _noop_fixture(_workspace: Path) -> None:

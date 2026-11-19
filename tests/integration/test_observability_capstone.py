@@ -95,9 +95,7 @@ _LIVE_GEMINI_KEY = _configured_key("gemini_api_key")
 @pytest.fixture(autouse=True)
 def _fake_gemini_key(mocker) -> None:
     """Let ``build_agent`` construct the Gemini provider offline (the model is always overridden)."""
-    mocker.patch(
-        "xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False
-    )
+    mocker.patch("xape.agent.factory.settings.gemini_api_key", SecretStr("test-key"), create=False)
 
 
 @pytest.fixture(autouse=True)

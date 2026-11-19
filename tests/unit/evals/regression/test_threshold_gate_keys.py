@@ -18,8 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from xape.config.settings import settings
 from evals.harness.keys import eval_keys_missing
+from xape.config.settings import settings
 
 # provider -> (the env-var name its inference needs, the settings attr the preflight reads).
 # ``gemini``/``openrouter`` hold a SecretStr (``.get_secret_value()``); ``modal`` a plain URL string.

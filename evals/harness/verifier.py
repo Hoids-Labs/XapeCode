@@ -149,5 +149,5 @@ def _xape(captured: str | bytes | None) -> str:
     if captured is None:
         return ""
     if isinstance(captured, bytes):
-        return captured.xape("utf-8", errors="replace")
+        return captured.decode("utf-8", errors="replace")
     return captured

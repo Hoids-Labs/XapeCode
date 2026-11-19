@@ -245,8 +245,8 @@ no-`KITARU_AGENT_ID` rule for the Worker Secret stand.
       `xape-<env>` bucket, a missing bucket is ONE friendly line and exit 1, process env still
       wins. The Secret shrinks to the bootstrap — `XAPE_ENV`, `KITARU_API_URL`, `KITARU_API_KEY`
       — and provider keys, `KITARU_AGENT_ID`, `SANDBOX_GIT_TOKEN` live in the bucket, mirrored by
-      `make sync-secrets ENV=<env>`. The nested sandbox app becomes `xape-sandbox-<env>`, the
-      Opik project `xape-<env>`.
+      `make sync-secrets ENV=<env>`. The nested sandbox app becomes `xape-sandbox-<env>`.
+      Langfuse projects are selected by their API keys, not by `XAPE_ENV`.
     - **The Recording Seam ignores a configured `KITARU_AGENT_ID` under a Worker Task.** A
       `xape-prod` bucket mirrored from `.env` carries the agent id, so a Worker at `prod` would
       hydrate it into Settings — past the Worker Function's env scrub — and every replay would die
