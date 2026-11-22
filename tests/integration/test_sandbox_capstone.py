@@ -70,7 +70,7 @@ def _bash_available() -> bool:
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
-    return result.returncode == 0 and "test" in result.stdout
+    return result.returncode == 0 and b"test" in result.stdout
 
 
 _BASH_AVAILABLE = _bash_available()
