@@ -1,6 +1,7 @@
 """Shared pytest fixtures. Mirror src/ 1:1 under tests/unit and tests/integration."""
 
 import os
+import sys
 from typing import Any
 
 # Disable file logging for the whole suite BEFORE any xape import (Fix 3). ``init_logger`` runs
@@ -20,14 +21,26 @@ os.environ["XAPE_LOG_FILE"] = ""
 # DELETES it so spawned subprocesses stay clean.
 os.environ["XAPE_ENV"] = "local"
 
-import pytest
-from pydantic import SecretStr
-from pydantic_ai.models.function import FunctionModel
 
-# The Kitaru/ZenML store-isolation fixtures that used to be registered here died with the durable
-# runtime (ADR-0019 §1): the headless runner boots no local stack, so there is no global store to
-# redirect and no durable wait to resolve.
-from support.git_env import GIT_HOOK_ENV_VARS
+# Import hook to ensure env vars are set before any xape module is imported (Linux CI fix).
+# This runs even before pytest_configure on some pytest versions.
+class _EarlyEnvFixer:
+    """Meta path hook to enforce env vars BEFORE xape imports (--import-mode=importlib fix)."""
+
+    def find_spec(self, fullname, path, target=None):
+        """Return None to let normal import proceed; env vars already set above."""
+        if fullname.startswith("xape"):
+            # Ensure env vars one more time just before xape modules load
+            os.environ.setdefault("XAPE_LOG_FILE", "")
+            os.environ.setdefault("XAPE_ENV", "local")
+        return None
+
+
+sys.meta_path.insert(0, _EarlyEnvFixer())
+
+import pytest  # noqa: E402
+from pydantic import SecretStr  # noqa: E402
+from pydantic_ai.models.function import FunctionModel  # noqa: E402
 
 
 def pytest_configure(config):
@@ -35,6 +48,12 @@ def pytest_configure(config):
     # Re-enforce environment setup in case it's needed during collection (Linux CI issue)
     os.environ.setdefault("XAPE_LOG_FILE", "")
     os.environ.setdefault("XAPE_ENV", "local")
+
+
+# The Kitaru/ZenML store-isolation fixtures that used to be registered here died with the durable
+# runtime (ADR-0019 §1): the headless runner boots no local stack, so there is no global store to
+# redirect and no durable wait to resolve.
+from support.git_env import GIT_HOOK_ENV_VARS  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
