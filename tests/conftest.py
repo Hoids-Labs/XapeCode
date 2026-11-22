@@ -31,6 +31,7 @@ def pytest_configure(config):
     os.environ.setdefault("XAPE_LOG_FILE", "")
     os.environ.setdefault("XAPE_ENV", "local")
 
+
 # The Kitaru/ZenML store-isolation fixtures that used to be registered here died with the durable
 # runtime (ADR-0019 §1): the headless runner boots no local stack, so there is no global store to
 # redirect and no durable wait to resolve.
