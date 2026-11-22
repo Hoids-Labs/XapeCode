@@ -126,6 +126,12 @@ def build_run_env(*, repo: Path) -> dict[str, str]:
     return {"SANDBOX_MODE": SANDBOX_MODE, "SANDBOX_REPO": str(repo)}
 
 
+def _run_command(xape_bin: Path) -> str:
+    """Quote the executable for the worker's shell, including paths containing spaces."""
+    executable = f'"{xape_bin}"' if sys.platform == "win32" else shlex.quote(str(xape_bin))
+    return f"{executable} run"
+
+
 def register_argv(
     *,
     agent: str,
@@ -147,7 +153,7 @@ def register_argv(
             "sessions, logs and docker Workspace into your working tree. Pick a path outside it."
         )
     argv = ["kitaru", "agent", "version", "register", agent]
-    argv += ["--command", f"{xape_bin} run"]
+    argv += ["--command", _run_command(xape_bin)]
     argv += ["--working-dir", str(harness_home)]
     for key, value in build_run_env(repo=repo).items():
         argv += ["--env", f"{key}={value}"]
@@ -273,7 +279,7 @@ def script_digest(script: Path) -> str:
 def desired_run_spec(spec: VersionSpec) -> dict[str, Any]:
     """The run spec fields a registered version is compared against, in the server's own shape."""
     return {
-        "command": f"{spec.xape_bin} run",
+        "command": _run_command(spec.xape_bin),
         "working_dir": str(spec.harness_home),
         "env": build_run_env(repo=spec.repo),
         "timeout_seconds": spec.timeout_seconds,
@@ -623,7 +629,7 @@ def _env_server() -> str | None:
     "--xape-bin",
     default=None,
     type=click.Path(path_type=Path),
-    help="The xape entrypoint the laptop Worker spawns.  [default: <repo>/.venv/bin/xape]",
+    help="The xape entrypoint the laptop Worker spawns. [default: the repo's .venv entrypoint]",
 )
 def main(
     server: str | None,
@@ -636,7 +642,12 @@ def main(
     """Register xape's agent versions, importer and evaluators on ONE Kitaru Server."""
     repo = repo.expanduser().resolve()
     harness_home = harness_home.expanduser().resolve()
-    entrypoint = (xape_bin or repo / ".venv/bin/xape").expanduser().resolve()
+    default_bin = (
+        repo / ".venv" / "Scripts" / "xape.exe"
+        if sys.platform == "win32"
+        else repo / ".venv" / "bin" / "xape"
+    )
+    entrypoint = (xape_bin or default_bin).expanduser().resolve()
     target = server or _env_server()
 
     if not entrypoint.is_file():

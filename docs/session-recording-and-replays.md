@@ -59,3 +59,5 @@ Replays run locally on your machine via a Kitaru Worker:
 uv run kitaru worker start
 ```
 
+Bootstrap uses the repository's `.venv/bin/xape` on POSIX or `.venv\Scripts\xape.exe`
+on Windows; `--xape-bin` overrides the executable.

@@ -16,6 +16,9 @@ OSS deployment (``kitaru login --local``), including the 409 ``conflict`` a dupl
 
 from __future__ import annotations
 
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -44,15 +47,21 @@ from scripts.bootstrap_kitaru import (
     script_digest,
 )
 
-REPO = Path("/home/op/xape-course")
-HOME = Path("/home/op/.xape-kitaru-worker")
+REPO = Path.home() / "xape-course"
+HOME = Path.home() / ".xape-kitaru-worker"
+XAPE_BIN = (
+    REPO / ".venv" / "Scripts" / "xape.exe"
+    if sys.platform == "win32"
+    else REPO / ".venv" / "bin" / "xape"
+)
+COMMAND = f'"{XAPE_BIN}" run' if sys.platform == "win32" else f"{shlex.quote(str(XAPE_BIN))} run"
 SERVER = "http://localhost:8000"
 
 
 def _argv(**overrides: Any) -> list[str]:
     kwargs: dict[str, Any] = {
         "agent": DEFAULT_AGENT,
-        "xape_bin": REPO / ".venv/bin/xape",
+        "xape_bin": XAPE_BIN,
         "harness_home": HOME,
         "repo": REPO,
         "timeout_seconds": 1800,
@@ -72,18 +81,35 @@ def _option(argv: list[str], name: str) -> str:
 
 def test_the_registered_command_is_xape_run_with_no_inline_prompt():
     """The prompt is NOT part of the registration — it arrives in KITARU_TASK_INPUTS (task 136)."""
-    assert _option(_argv(), "--command") == f"{REPO.as_posix()}/.venv/bin/xape run"
+    assert _option(_argv(), "--command") == COMMAND
 
 
 def test_the_command_is_an_absolute_binary_so_the_worker_needs_no_path_setup():
-    assert _option(_argv(), "--command").startswith("/")
+    command = _option(_argv(), "--command")
+    assert command == COMMAND
+    assert XAPE_BIN.is_absolute()
+
+
+def test_the_command_quotes_an_executable_path_with_spaces(tmp_path):
+    executable = tmp_path / "venv with spaces" / ("xape.cmd" if sys.platform == "win32" else "xape")
+    executable.parent.mkdir()
+    if sys.platform == "win32":
+        executable.write_text("@echo off\necho %1\n", encoding="utf-8")
+    else:
+        executable.write_text("#!/bin/sh\nprintf '%s\\n' \"$1\"\n", encoding="utf-8")
+        executable.chmod(0o755)
+
+    command = _option(_argv(xape_bin=executable), "--command")
+    result = subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
+
+    assert result.stdout.strip() == "run"
 
 
 # --- the replay context ----------------------------------------------------------------------------
 
 
 def test_the_run_env_puts_the_workspace_in_docker_over_a_clone_of_this_repo():
-    assert build_run_env(repo=REPO) == {"SANDBOX_MODE": "docker", "SANDBOX_REPO": REPO.as_posix()}
+    assert build_run_env(repo=REPO) == {"SANDBOX_MODE": "docker", "SANDBOX_REPO": str(REPO)}
 
 
 def test_every_run_env_entry_is_passed_as_its_own_env_option():
@@ -91,12 +117,12 @@ def test_every_run_env_entry_is_passed_as_its_own_env_option():
 
     assert [argv[i + 1] for i, item in enumerate(argv) if item == "--env"] == [
         "SANDBOX_MODE=docker",
-        f"SANDBOX_REPO={REPO.as_posix()}",
+        f"SANDBOX_REPO={REPO}",
     ]
 
 
 def test_the_working_dir_is_the_harness_home_outside_the_repo():
-    assert _option(_argv(), "--working-dir") == HOME.as_posix()
+    assert _option(_argv(), "--working-dir") == str(HOME)
 
 
 def test_a_harness_home_inside_the_repo_is_refused():
@@ -157,13 +183,13 @@ def test_the_server_is_named_explicitly_on_every_argv():
 def test_the_first_registration_creates_the_agent_and_its_first_version():
     argv = agent_register_argv(
         agent=DEFAULT_AGENT,
-        spec=VersionSpec(xape_bin=REPO / ".venv/bin/xape", harness_home=HOME, repo=REPO),
+        spec=VersionSpec(xape_bin=XAPE_BIN, harness_home=HOME, repo=REPO),
         server=SERVER,
     )
 
     assert argv[:4] == ["kitaru", "agent", "register", DEFAULT_AGENT]
-    assert _option(argv, "--command") == f"{REPO.as_posix()}/.venv/bin/xape run"
-    assert _option(argv, "--working-dir") == HOME.as_posix()
+    assert _option(argv, "--command") == COMMAND
+    assert _option(argv, "--working-dir") == str(HOME)
 
 
 # --- the built spec is one kitaru itself accepts ---------------------------------------------------
@@ -173,7 +199,8 @@ def test_the_built_spec_validates_against_the_installed_kitaru_run_spec():
     """The offline proof: an argv these tests accept is one the server's ``RunSpec`` accepts."""
     from kitaru.cli.registration import build_agent_version_request
 
-    argv = _argv(harness_home=Path("/harness"))
+    harness_home = Path.home() / "harness"
+    argv = _argv(harness_home=harness_home)
     request = build_agent_version_request(
         command=_option(argv, "--command"),
         entrypoint=None,
@@ -189,21 +216,21 @@ def test_the_built_spec_validates_against_the_installed_kitaru_run_spec():
     )
 
     assert request.run_spec is not None
-    assert request.run_spec.working_dir == "/harness"
-    assert request.run_spec.env["SANDBOX_REPO"] == REPO.as_posix()
+    assert request.run_spec.working_dir == str(harness_home)
+    assert request.run_spec.env["SANDBOX_REPO"] == str(REPO)
 
 
 def test_every_server_gets_only_the_laptop_workers_version():
     """Kitaru Workers run on the operator's machine only (ADR-0023): one docker spec, their paths."""
-    specs = desired_versions(repo=REPO, xape_bin=REPO / ".venv/bin/xape", harness_home=HOME)
+    specs = desired_versions(repo=REPO, xape_bin=XAPE_BIN, harness_home=HOME)
 
-    assert specs == [VersionSpec(xape_bin=REPO / ".venv/bin/xape", harness_home=HOME, repo=REPO)]
+    assert specs == [VersionSpec(xape_bin=XAPE_BIN, harness_home=HOME, repo=REPO)]
 
 
 # --- what "already registered" means ---------------------------------------------------------------
 
 
-DOCKER_SPEC = VersionSpec(xape_bin=REPO / ".venv/bin/xape", harness_home=HOME, repo=REPO)
+DOCKER_SPEC = VersionSpec(xape_bin=XAPE_BIN, harness_home=HOME, repo=REPO)
 
 
 def registered_version(number: int = 1) -> dict[str, Any]:
@@ -213,9 +240,9 @@ def registered_version(number: int = 1) -> dict[str, Any]:
         "version": number,
         "display_version": None,
         "run_spec": {
-            "command": f"{REPO.as_posix()}/.venv/bin/xape run",
-            "working_dir": HOME.as_posix(),
-            "env": {"SANDBOX_MODE": "docker", "SANDBOX_REPO": REPO.as_posix()},
+            "command": COMMAND,
+            "working_dir": str(HOME),
+            "env": {"SANDBOX_MODE": "docker", "SANDBOX_REPO": str(REPO)},
             "secret_ids": [],
             "hooks": [],
             "runtime_capabilities": {"overrides": True, "tool_policies": True},
@@ -295,8 +322,8 @@ def test_a_new_importer_version_carries_the_script_but_not_the_provider(tmp_path
 def test_every_evaluator_in_the_repo_is_registered_under_its_file_name():
     scripts = evaluator_scripts(Path("evaluators"))
 
-    assert Path("evaluators/xape_request_limit.py") in scripts
-    assert evaluator_name(Path("evaluators/xape_request_limit.py")) == "xape-request-limit"
+    assert Path("evaluators/decode_request_limit.py") in scripts
+    assert evaluator_name(Path("evaluators/decode_request_limit.py")) == "decode-request-limit"
 
 
 def test_dunder_files_are_not_evaluators(tmp_path):
@@ -443,7 +470,7 @@ def _bootstrap(fake: FakeKitaru, repo_tree: Path, **overrides: Any) -> list[Row]
     kwargs: dict[str, Any] = {
         "runner": fake,
         "repo": REPO,
-        "xape_bin": REPO / ".venv/bin/xape",
+        "xape_bin": XAPE_BIN,
         "harness_home": HOME,
         "server": SERVER,
         "evaluators_root": repo_tree / "evaluators",
@@ -575,6 +602,25 @@ def test_the_cli_refuses_a_missing_xape_binary(tmp_path):
 
     assert result.exit_code != 0
     assert "no xape entrypoint" in result.output
+
+
+def test_the_cli_uses_the_platform_venv_entrypoint(mocker, tmp_path):
+    binary = (
+        tmp_path / ".venv" / "Scripts" / "xape.exe"
+        if sys.platform == "win32"
+        else tmp_path / ".venv" / "bin" / "xape"
+    )
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    bootstrap_mock = mocker.patch("scripts.bootstrap_kitaru.bootstrap", return_value=[])
+
+    result = CliRunner().invoke(
+        main,
+        ["--repo", str(tmp_path), "--harness-home", str(tmp_path.parent / "home"), "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert bootstrap_mock.call_args.kwargs["xape_bin"] == binary.resolve()
 
 
 def test_the_cli_prints_the_agent_id_to_export(mocker, tmp_path):

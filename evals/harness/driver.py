@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -257,7 +258,10 @@ async def run_agent_once(
 
 def run_agent_once_sync(prompt: str, **kwargs: Any) -> EvalRunRecord:
     """Sync wrapper over :func:`run_agent_once` for synchronous experiment task adapters."""
-    return asyncio.run(run_agent_once(prompt, **kwargs))
+    if sys.platform == "win32":
+        return asyncio.run(run_agent_once(prompt, **kwargs), loop_factory=asyncio.ProactorEventLoop)
+    else:
+        return asyncio.run(run_agent_once(prompt, **kwargs))
 
 
 def _build_record(

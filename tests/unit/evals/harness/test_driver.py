@@ -9,6 +9,9 @@ pre-filled ``message_history``. No network, no keys.
 
 from __future__ import annotations
 
+import asyncio
+import sys
+import warnings
 from pathlib import Path
 
 import pytest
@@ -247,6 +250,32 @@ def test_run_agent_once_sync_wraps_the_async_driver(workspace, install_model):
 
     assert record.output == _FINAL
     assert record.steps == 2
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows event loop policies only")
+def test_sync_driver_can_spawn_with_a_selector_policy(mocker):
+    async def run_with_subprocess(prompt: str, **kwargs: object) -> EvalRunRecord:
+        process = await asyncio.create_subprocess_exec(sys.executable, "-c", "pass")
+        assert await process.wait() == 0
+        return EvalRunRecord(
+            session_id="test",
+            output=prompt,
+            messages=[],
+            tool_calls=[],
+            steps=0,
+            input_tokens=0,
+            output_tokens=0,
+        )
+
+    mocker.patch("evals.harness.driver.run_agent_once", side_effect=run_with_subprocess)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        previous_policy = asyncio.get_event_loop_policy()
+        try:
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+            assert run_agent_once_sync("ok").output == "ok"
+        finally:
+            asyncio.set_event_loop_policy(previous_policy)
 
 
 def _tool_return_texts(record: EvalRunRecord) -> list[str]:
