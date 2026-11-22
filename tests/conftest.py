@@ -1,8 +1,11 @@
 """Shared pytest fixtures. Mirror src/ 1:1 under tests/unit and tests/integration."""
 
 import os
-import sys
 from typing import Any
+
+import pytest
+from pydantic import SecretStr
+from pydantic_ai.models.function import FunctionModel
 
 # Disable file logging for the whole suite BEFORE any xape import (Fix 3). ``init_logger`` runs
 # at import time in the ``xape.cli`` entrypoint; an empty ``XAPE_LOG_FILE`` installs a
@@ -20,27 +23,6 @@ os.environ["XAPE_LOG_FILE"] = ""
 # back as whatever ``.env`` says, an already-present one is left alone. The per-test fixture still
 # DELETES it so spawned subprocesses stay clean.
 os.environ["XAPE_ENV"] = "local"
-
-
-# Import hook to ensure env vars are set before any xape module is imported (Linux CI fix).
-# This runs even before pytest_configure on some pytest versions.
-class _EarlyEnvFixer:
-    """Meta path hook to enforce env vars BEFORE xape imports (--import-mode=importlib fix)."""
-
-    def find_spec(self, fullname, path, target=None):
-        """Return None to let normal import proceed; env vars already set above."""
-        if fullname.startswith("xape"):
-            # Ensure env vars one more time just before xape modules load
-            os.environ.setdefault("XAPE_LOG_FILE", "")
-            os.environ.setdefault("XAPE_ENV", "local")
-        return None
-
-
-sys.meta_path.insert(0, _EarlyEnvFixer())
-
-import pytest  # noqa: E402
-from pydantic import SecretStr  # noqa: E402
-from pydantic_ai.models.function import FunctionModel  # noqa: E402
 
 
 def pytest_configure(config):

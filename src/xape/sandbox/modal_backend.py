@@ -74,10 +74,13 @@ _GH_INSTALL_CMD = (
 _BOOTSTRAP_TAR = "/tmp/xape-bootstrap.tar"
 _EXPORT_TAR = "/tmp/xape-export.tar"
 
+# SIGKILL sentinel for timeout exit code (Unix-only; on Windows, use a fixed sentinel value).
+_SIGKILL = getattr(signal, "SIGKILL", 9)  # 9 is SIGKILL on Unix systems
+
 # modal returns ``-1`` from ``ContainerProcess.wait()`` on a per-exec timeout; normalized to the
 # killed-by-signal sentinel every executor uses on timeout.
 _MODAL_TIMEOUT_RETURNCODE = -1
-_TIMEOUT_EXIT = -signal.SIGKILL
+_TIMEOUT_EXIT = -_SIGKILL
 
 # Rendered when the sandbox could not be brought back: the never-crash contract — a ``bash`` call gets
 # a rendered failure (125 = the generic "sandbox unavailable" code), never an exception.
@@ -474,4 +477,4 @@ def _is_dir(info: Any) -> bool:
 
 def _xape(raw: bytes) -> str:
     """Decode captured stream bytes as UTF-8, replacing undecodable bytes (never crash)."""
-    return raw.xape("utf-8", errors="replace")
+    return raw.decode("utf-8", errors="replace")
