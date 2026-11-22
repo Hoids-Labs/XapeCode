@@ -131,7 +131,9 @@ async def test_real_docker_repo_clone_is_visible_in_workspace(tmp_path: Path) ->
         assert seen.exit_code == 0
         assert "cloned-into-workspace" in seen.stdout
         # (2) ... and so does the file backend (the read tool's byte transport) — one truthful tree.
-        assert (await executor._backend.read_bytes("README.md")).decode() == "cloned-into-workspace\n"
+        assert (
+            await executor._backend.read_bytes("README.md")
+        ).decode() == "cloned-into-workspace\n"
         # (3) the clone is a real repo inside the mount too — the .git dir rode in with the bind mount
         #     (checked with `test -d`, since the slim worker image ships no git binary).
         git_probe = await executor.run(
@@ -163,7 +165,9 @@ async def test_real_modal_repo_clone_is_uploaded_into_workspace(tmp_path: Path) 
         )
         assert seen.stdout.strip() == "cloned-into-workspace"
         # The file backend reads the same cloned file back directly (no mirror).
-        assert (await executor._backend.read_bytes("README.md")).decode() == "cloned-into-workspace\n"
+        assert (
+            await executor._backend.read_bytes("README.md")
+        ).decode() == "cloned-into-workspace\n"
     finally:
         await executor.aclose()  # export + terminate the remote sandbox (no leak)
 
