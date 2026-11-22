@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-07-04
 **Amended:** 2026-07-13 — §7's fan-out mechanism (N `agent(prompt)` calls per response) and §8's
-single-report result shape are **superseded by
+single-report result swhape are **superseded by
 [ADR-0017](0017-resilient-parallel-subagent-fanout.md)**: the tool is now
 `agent(prompts: list[str])` — one call, harness-gathered fan-out, labelled aggregation, input and
 output validation. §1–6, the §7 semaphore / `UsageLimits` / no-usage-threading, the §8 `truncate()`

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -337,6 +338,7 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sleep command not available on Windows")
 async def test_exec_timeout_kills_only_the_client_process_group(mocker):
     # A real ``sleep`` child stands in for the ``docker exec`` client (no daemon), spawned with the same
     # pipe + ``start_new_session`` shape, so it exercises the identical process-group kill. On timeout
@@ -432,6 +434,9 @@ async def test_file_ops_require_a_created_workspace():
         await backend.read_bytes("f.txt")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="symlink creation requires admin/dev mode on Windows"
+)
 async def test_file_ops_refuse_a_symlink_that_escapes_the_workspace(tmp_path):
     # SECURITY (ADR-0012 §4): a symlink planted inside the Workspace (as sandboxed ``bash`` can) that
     # points onto the HOST must not be followed off the bind mount by the host-side pathlib file ops.
@@ -463,6 +468,9 @@ async def test_file_ops_refuse_a_symlink_that_escapes_the_workspace(tmp_path):
     assert outside.read_bytes() == b"HOST SECRET"  # byte-unchanged: never read, never overwritten
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="symlink creation requires admin/dev mode on Windows"
+)
 async def test_file_ops_allow_the_root_new_nested_paths_and_in_workspace_symlinks(tmp_path):
     # Containment must not over-reject: the root itself, a brand-new nested path (nothing on disk yet),
     # and an in-workspace symlink pointing INSIDE the Workspace all resolve within the mount.

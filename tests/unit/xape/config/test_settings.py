@@ -144,6 +144,9 @@ def test_scrub_covers_every_gated_secret(monkeypatch):
     for var in ("MODAL_PROXY_TOKEN_ID", "MODAL_PROXY_TOKEN_SECRET"):
         monkeypatch.setenv(var, "changeme")
     monkeypatch.setenv("SANDBOX_GIT_TOKEN", "changeme")
+    # Clean up any OLLAMA vars from the environment to avoid loading from .env
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     s = Settings(_env_file=None)
     assert s.modal_proxy_token_id.get_secret_value() == ""
     assert s.modal_proxy_token_secret.get_secret_value() == ""

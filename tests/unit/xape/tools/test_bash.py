@@ -29,6 +29,9 @@ from xape.tools import bash as bash_module
 from xape.tools.askuser import deny_user_question_resolver
 from xape.tools.exec import ExecResult
 
+# Skip all these tests on Windows since they use Unix shell utilities (echo, printf, etc.)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Unix shell utilities required")
+
 
 async def _deny_resolver(request: PermissionRequest) -> PermissionDecision:
     return PermissionDecision.deny()

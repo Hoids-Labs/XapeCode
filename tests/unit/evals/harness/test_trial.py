@@ -22,6 +22,8 @@ from __future__ import annotations
 import ast
 import json
 import os
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +40,33 @@ from evals.harness.trial import TrialResult, child_env, run_trial
 from xape.config.settings import Settings
 
 TRIAL_ID = "0a1b2c3d"
+
+
+def _bash_available() -> bool:
+    """Check if bash can be executed (not blocked by policy or missing)."""
+    try:
+        result = shutil.which("bash")
+        if result is None:
+            return False
+        # Actually try to run bash to check if it's blocked by policy
+        completed = subprocess.run(
+            ["bash", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        # Return True only if bash runs successfully (exit code 0)
+        return completed.returncode == 0
+    except Exception:
+        return False
+
+
+# Skip tests that require bash only if it's truly unavailable (not just on Windows)
+pytestmark = pytest.mark.skipif(
+    not _bash_available(),
+    reason="Tests require bash to run verifier; bash is not available on this system",
+)
 
 
 def _task(tmp_path: Path, **overrides: Any) -> BenchmarkTask:

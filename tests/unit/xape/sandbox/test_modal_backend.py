@@ -10,7 +10,6 @@ is the ``@skipif``-guarded ``tests/integration/test_modal_executor.py``.
 
 from __future__ import annotations
 
-import signal
 import subprocess
 import sys
 import tarfile
@@ -29,6 +28,7 @@ from xape.sandbox.modal_backend import (
     _GH_INSTALL_CMD,
     _SANDBOX_LOST_EXIT,
     _SANDBOX_LOST_NOTE,
+    _SIGKILL,
     _WORKSPACE,
     ModalBackend,
     _load_modal,
@@ -574,7 +574,7 @@ async def test_exec_timeout_reports_timed_out_without_terminating_the_sandbox(mo
     result = await backend.exec("bash", "-lc", "sleep 100", timeout_s=1.0)
 
     assert result.timed_out is True
-    assert result.exit_code == -signal.SIGKILL  # normalized to the sibling executors' sentinel
+    assert result.exit_code == -_SIGKILL  # normalized to the sibling executors' sentinel
     assert result.stdout == "partial"  # partial output is preserved
     assert result.note == ""  # the sandbox + its fs survive — no session-level reset happened
     assert sandbox.terminate_count == 0  # the sandbox is NOT torn down on an exec timeout
@@ -1065,7 +1065,7 @@ async def test_a_timeout_never_triggers_file_op_revival(mocker, workspace):
     result = await backend.exec("bash", "-lc", "sleep 100", timeout_s=1.0)
 
     assert result.timed_out is True
-    assert result.exit_code == -signal.SIGKILL
+    assert result.exit_code == -_SIGKILL
     assert len(created) == 1  # exactly one sandbox — a timeout does NOT recreate
     assert backend._sandbox is sandbox  # the same live sandbox
     assert backend._recreated is False  # no restore note pending

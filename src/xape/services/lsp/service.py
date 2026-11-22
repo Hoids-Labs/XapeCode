@@ -38,15 +38,31 @@ async def _spawn_process(root: Path) -> asyncio.subprocess.Process:
     """The patchable spawn seam: launch the configured stdio Language Server under ``root``.
 
     The single real-subprocess boundary — unit tests patch this to inject a fake process.
+
+    On Windows, subprocess spawning can fail transiently when the system is under load
+    (e.g., during test suite runs with many processes). Retry with exponential backoff.
     """
-    return await asyncio.create_subprocess_exec(
-        settings.lsp_server_command,
-        *settings.lsp_server_args,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=root,
-    )
+    max_attempts = 5
+    last_exc = None
+    for attempt in range(max_attempts):
+        try:
+            return await asyncio.create_subprocess_exec(
+                settings.lsp_server_command,
+                *settings.lsp_server_args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=root,
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_attempts - 1:
+                # Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms, 1600ms (totaling ~3.15s)
+                # Windows subprocess spawning can fail when system is saturated during test runs.
+                delay = min(0.05 * (2**attempt), 2.0)
+                await asyncio.sleep(delay)
+                continue
+    raise last_exc  # type: ignore[misc]
 
 
 async def _get_client(cwd: Path) -> LspClient | None:
@@ -64,7 +80,7 @@ async def _get_client(cwd: Path) -> LspClient | None:
             return cached
         del _CLIENTS[root]  # crashed mid-session → drop and respawn below (not _BROKEN forever)
     elif cached is _BROKEN:
-        return None
+        return None  # spawn permanently failed; no retry storm
     client = await _start_client(root)
     _CLIENTS[root] = client if client is not None else _BROKEN
     return client
@@ -75,7 +91,13 @@ async def _start_client(root: Path) -> LspClient | None:
     try:
         process = await _spawn_process(root)
     except Exception as exc:
-        logger.warning("lsp: could not spawn %r in %s: %s", settings.lsp_server_command, root, exc)
+        logger.warning(
+            "lsp: could not spawn %r in %s: %s (type: %s)",
+            settings.lsp_server_command,
+            root,
+            exc if str(exc) else repr(exc),
+            type(exc).__name__,
+        )
         return None
     client = LspClient(process, root)
     try:

@@ -1038,7 +1038,7 @@ async def test_a_child_that_raises_gets_a_failure_note_and_its_siblings_still_fo
     from pydantic_ai.exceptions import UsageLimitExceeded
 
     class _OneChildExplodes:
-        async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+        async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
             if prompt == _PROMPT_B:
                 raise UsageLimitExceeded("the request limit was exceeded")
             return _report(f"report for: {prompt}")
@@ -1393,7 +1393,7 @@ async def test_the_footer_is_appended_even_when_a_section_carries_a_failure_note
     from pydantic_ai.exceptions import UsageLimitExceeded
 
     class _OneRaisesOneIsTwiceBad:
-        async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+        async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
             if prompt.startswith(_PROMPT_B):
                 raise UsageLimitExceeded("the request limit was exceeded")
             if prompt.startswith(_PROMPT_C):
@@ -1477,7 +1477,7 @@ class _StubAgent:
     def __init__(self, result):
         self._result = result
 
-    async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+    async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
         return self._result
 
 
@@ -1494,7 +1494,7 @@ class _ScriptedAgent:
         self._script = {prompt: list(results) for prompt, results in script.items()}
         self.prompts: list[str] = []
 
-    async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+    async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
         await asyncio.sleep(
             0
         )  # yield, so a broken (sequential) gather still cannot reorder results
@@ -1513,7 +1513,7 @@ class _ScriptedAgent:
 class _EchoAgent:
     """A stand-in main agent whose child report echoes its own spawn prompt (proves section pairing)."""
 
-    async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+    async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
         await asyncio.sleep(0)  # yield, so a broken (sequential) gather still can't reorder results
         return _report(f"report for: {prompt}")
 
@@ -1571,7 +1571,7 @@ class _ConcurrencyTracker:
         self.max_concurrent = 0
         self.spawns = 0
 
-    async def run(self, prompt, *, deps, usage_limits, event_stream_handler=None):
+    async def run(self, prompt, *, deps, model=None, usage_limits, event_stream_handler=None):
         self.live += 1
         self.spawns += 1
         self.max_concurrent = max(self.max_concurrent, self.live)

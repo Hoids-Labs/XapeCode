@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import platform
 import stat
 from pathlib import Path
 
@@ -191,7 +192,9 @@ def test_write_summary_writes_one_json_object_creating_parent_dirs(tmp_path):
     assert isinstance(payload, dict)
     # Readable by whoever grades the trial, not just the uid that ran it: the atomic write goes
     # through a 0600 temp file, so the mode a plain write would give has to be restored.
-    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    # On Unix systems, we expect 0o644; on Windows, the mode bits are handled differently.
+    if platform.system() != "Windows":
+        assert stat.S_IMODE(target.stat().st_mode) == 0o644
     # No temp file left next to it — a ``*.json`` glob in a trial dir must find exactly one file.
     assert [entry.name for entry in target.parent.iterdir()] == ["summary.json"]
 

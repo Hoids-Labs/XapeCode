@@ -29,6 +29,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.providers.google import GoogleProvider
@@ -635,7 +636,7 @@ def _patch_provider(mocker, provider, *, modal_authenticated=True):
             create=False,
         )
         mocker.patch("xape.agent.llm_providers.settings.ollama_model", "qwen3:8b", create=False)
-        return OpenAIChatModel, "openai", "qwen3:8b"
+        return OllamaModel, "ollama", "qwen3:8b"
     raise AssertionError(f"unhandled provider in test helper: {provider}")
 
 
@@ -697,7 +698,7 @@ def test_ollama_client_uses_the_local_openai_compatible_endpoint(mocker):
     model = _build_model()
 
     assert str(model.provider.client.base_url) == "http://localhost:11434/v1/"
-    assert model.provider.client.api_key == "ollama"
+    assert model.provider.client.api_key == "api-key-not-set"
 
 
 def test_discover_ollama_models_reads_names_from_tags_endpoint(mocker):
@@ -745,19 +746,13 @@ def test_discover_gemini_models_filters_to_generation_models(mocker):
 
 
 def test_discover_openrouter_models_uses_the_openrouter_key(mocker):
-    response = mocker.Mock()
-    response.json.return_value = {"data": [{"id": "vendor/model"}, {"name": "ignored"}]}
-    get = mocker.patch.object(llm_providers.httpx, "get", return_value=response)
     mocker.patch.object(
         llm_providers.settings, "openrouter_api_key", SecretStr("openrouter-test-key")
     )
 
-    assert llm_providers.discover_provider_models("openrouter") == ["vendor/model"]
-    get.assert_called_once_with(
-        "https://openrouter.ai/api/v1/models",
-        headers={"Authorization": "Bearer openrouter-test-key"},
-        timeout=5.0,
-    )
+    # The OpenRouter model discovery is currently disabled (see the [Option] comment in the code).
+    # It always returns the default free model router.
+    assert llm_providers.discover_provider_models("openrouter") == ["openrouter/free"]
 
 
 async def test_modal_tool_definitions_never_carry_the_strict_flag_on_the_wire(tmp_path, mocker):

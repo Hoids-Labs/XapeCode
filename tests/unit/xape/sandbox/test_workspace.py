@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import stat
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -398,6 +399,9 @@ def test_extract_tar_overwrites_a_read_only_clone_tree(tmp_path):
     assert loose_object.read_bytes() == b"content-addressed-object"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="symlink creation requires admin/dev mode on Windows"
+)
 def test_extract_tar_does_not_chmod_a_symlink_target_escaping_the_destination(tmp_path):
     """The pre-extract writable sweep must NOT follow a symlink OUT of the destination (ADR-0012 §4).
 
@@ -468,9 +472,12 @@ def test_extract_tar_keeps_the_data_filter_traversal_guard(tmp_path):
     assert not (tmp_path / "escaped.txt").exists()
 
     # An absolute path is neutralized (leading slash stripped → contained), never the real location.
-    absolute_target = tmp_path / "outside" / "abs.txt"
-    extract_tar(_one_member_tar(str(absolute_target)), dest)
-    assert not absolute_target.exists()
+    # On all platforms, use a POSIX-style absolute path (starting with /) rather than a Windows
+    # absolute path (drive letter) to test the portable absolute-path containment.
+    extract_tar(_one_member_tar("/outside/abs.txt"), dest)
+    # The file is extracted under the destination (leading slash stripped), not at the filesystem root.
+    assert (dest / "outside" / "abs.txt").exists()
+    assert (dest / "outside" / "abs.txt").read_text(encoding="utf-8") == "pwned"
 
     # An absolute symlink is rejected outright.
     with pytest.raises(tarfile.FilterError):

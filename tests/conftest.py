@@ -1,6 +1,7 @@
 """Shared pytest fixtures. Mirror src/ 1:1 under tests/unit and tests/integration."""
 
 import os
+from typing import Any
 
 # Disable file logging for the whole suite BEFORE any xape import (Fix 3). ``init_logger`` runs
 # at import time in the ``xape.cli`` entrypoint; an empty ``XAPE_LOG_FILE`` installs a
@@ -21,6 +22,7 @@ os.environ["XAPE_ENV"] = "local"
 
 import pytest
 from pydantic import SecretStr
+from pydantic_ai.models.function import FunctionModel
 
 # The Kitaru/ZenML store-isolation fixtures that used to be registered here died with the durable
 # runtime (ADR-0019 §1): the headless runner boots no local stack, so there is no global store to
@@ -251,3 +253,49 @@ def _reset_subagent_seam():
     yield
     agent.reset_main_agent()
     agent._reset_semaphores()
+
+
+@pytest.fixture(autouse=True)
+def _clear_lsp_cache():
+    """Hermeticity guard — isolate the module-level per-root LSP client cache between tests.
+
+    ``xape.services.lsp.service._CLIENTS`` is a module-level cache that persists across tests by
+    design (caching is per-root, so it survives the whole session). Without a reset between tests,
+    a failed spawn (e.g. during one test with a certain temp directory) caches a _BROKEN sentinel,
+    and a later test using a fresh temp directory would still find that cached failure and return
+    None immediately, never retrying. Reset before AND after every test so each starts from a clean
+    cache.
+    """
+    from xape.services.lsp import service as lsp_service
+
+    lsp_service._CLIENTS.clear()
+    yield
+    lsp_service._CLIENTS.clear()
+
+
+@pytest.fixture
+def install_model(monkeypatch) -> Any:
+    """A fixture factory that injects a scripted FunctionModel for tests that build agents directly.
+
+    Call with a FunctionModel instance (from ``support.eval_models``) to patch the agent's
+    model in build_agent() so it uses the scripted model instead of making network calls.
+
+    Example usage::
+
+        def test_compact_survives(install_model):
+            install_model(read_then_finish("file.txt", "done"))
+            agent = build_agent()
+            # agent now uses the scripted model
+    """
+
+    def _install(scripted_model: FunctionModel) -> None:
+        """Inject the scripted model by patching llm_providers._build_model()."""
+        from xape.agent import llm_providers
+
+        # Patch _build_model to return the scripted model
+        def patched_build_model(*args: Any, **kwargs: Any) -> FunctionModel:
+            return scripted_model
+
+        monkeypatch.setattr(llm_providers, "_build_model", patched_build_model)
+
+    return _install

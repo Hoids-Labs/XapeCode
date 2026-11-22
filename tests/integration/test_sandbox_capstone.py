@@ -61,6 +61,21 @@ from xape.tools.exec import ExecResult, LocalExecutor
 _BASH = bash_mod.BASH_TOOL_NAME
 
 
+# Availability check for bash (used by glob/grep parity tests).
+def _bash_available() -> bool:
+    """True if bash is available and working (else glob/grep parity tests SKIP)."""
+    try:
+        result = subprocess.run(
+            ["bash", "-c", "echo test"], capture_output=True, timeout=5.0, check=False
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and "test" in result.stdout
+
+
+_BASH_AVAILABLE = _bash_available()
+
+
 # Hermeticity fixtures — a faked key so ``build_agent`` constructs offline. (The rootdir conftest
 # already pins ``SANDBOX_MODE=none`` and resets the ``bash`` executor memo around every test.)
 
@@ -439,6 +454,7 @@ async def test_read_write_edit_route_through_the_backend_on_logical_paths(
     ) in backend.writes  # unique-match replace through the seam
 
 
+@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash is not available on this system")
 @pytest.mark.parametrize("pattern", ["*.py", "**/*.py", "src/**/*.py"])
 async def test_glob_has_output_parity_with_none_mode(mocker, tmp_path: Path, pattern: str) -> None:
     """``glob`` executes in the sandbox (real ``find`` via the local-exec backend) with none-mode parity (§4)."""
@@ -451,6 +467,7 @@ async def test_glob_has_output_parity_with_none_mode(mocker, tmp_path: Path, pat
     assert sandbox_out == none_out
 
 
+@pytest.mark.skipif(not _BASH_AVAILABLE, reason="bash is not available on this system")
 @pytest.mark.parametrize("kwargs", [{}, {"path": "b.py"}, {"glob": "**/*.py"}])
 async def test_grep_has_output_parity_with_none_mode(mocker, tmp_path: Path, kwargs: dict) -> None:
     """``grep`` executes in the sandbox (real ``grep`` via the local-exec backend) with none-mode parity (§4)."""
@@ -727,14 +744,28 @@ def test_dirty_workspace_lands_on_a_local_branch_even_when_push_fails(tmp_path: 
     (workspace / "agent_work.txt").write_text("uncommitted results\n", encoding="utf-8")
     import shutil
 
-    shutil.rmtree(source)  # make the push impossible; the local git stays intact
+    def handle_remove_readonly(func, path, exc):
+        """Error handler for shutil.rmtree() to handle read-only files on Windows."""
+        import os
+        import stat
+
+        if not os.access(path, os.W_OK):
+            os.chmod(path, stat.S_IWUSR | stat.S_IREAD)
+            func(path)
+        else:
+            raise
+
+    shutil.rmtree(
+        source, onexc=handle_remove_readonly
+    )  # make the push impossible; the local git stays intact
 
     result = ship_workspace(home, repo=str(source), session_id="abcd1234-5678-9012")
 
     assert isinstance(result, ShipResult)
     assert result.pushed is False
     assert result.branch == "xape/abcd1234"
-    assert ".xape/sandbox" in result.message  # names the local branch's location
+    # On Windows, paths use backslashes; check for both forward and backslashes
+    assert ".xape/sandbox" in result.message or ".xape\\sandbox" in result.message
     assert _branch_exists(workspace, "xape/abcd1234")
     assert "agent_work.txt" in _git_out(workspace, "ls-tree", "--name-only", "xape/abcd1234")
 

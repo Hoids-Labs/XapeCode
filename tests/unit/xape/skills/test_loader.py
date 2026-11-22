@@ -433,7 +433,8 @@ def test_discover_resource_dir_is_cwd_joined_not_resolved(tmp_path):
     expected = tmp_path / settings.skills_dir / "deploy"
     assert found["deploy"].resource_dir == expected
     # ``source`` keeps the resolved absolute SKILL.md path; ``resource_dir`` stays the cwd-joined dir.
-    assert str(found["deploy"].source).endswith("deploy/SKILL.md")
+    expected_source = expected / "SKILL.md"
+    assert Path(found["deploy"].source) == expected_source
 
 
 def test_discover_resource_dir_set_for_a_sibling_directory_too(tmp_path):

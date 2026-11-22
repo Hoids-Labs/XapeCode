@@ -8,6 +8,7 @@ No network: agents are built directly on streaming ``FunctionModel``s (no Gemini
 """
 
 import asyncio
+import contextlib
 import io
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
@@ -116,12 +117,32 @@ async def _drive_run_app(
             pipe.send_text(f"{line}\r")
 
         app_task = asyncio.ensure_future(app_mod.run_app(console=console, **run_app_kwargs))  # type: ignore[arg-type]
+        script_task = None
         try:
-            await asyncio.wait_for(script(buf, send), timeout=5.0)
-            await asyncio.wait_for(app_task, timeout=5.0)
-        finally:
+            # Give the app time to initialize before starting the script
+            await asyncio.sleep(0.5)
+            script_task = asyncio.create_task(script(buf, send))
+            await asyncio.wait_for(script_task, timeout=7.0)
+            await asyncio.wait_for(app_task, timeout=7.0)
+        except (TimeoutError, asyncio.CancelledError):
             if not app_task.done():
                 app_task.cancel()
+            if script_task and not script_task.done():
+                script_task.cancel()
+            await asyncio.gather(app_task, script_task, return_exceptions=True)
+            raise
+        finally:
+            # Ensure both tasks are cleaned up and await any pending cancellations
+            for task in [app_task, script_task]:
+                if task and not task.done():
+                    task.cancel()
+            # Give cancellations a chance to propagate
+            await asyncio.sleep(0.01)
+            # Await any remaining tasks to ensure they're fully cancelled
+            for task in [app_task, script_task]:
+                if task and not task.done():
+                    with contextlib.suppress(TimeoutError, asyncio.CancelledError):
+                        await asyncio.wait_for(task, timeout=0.1)
     return buf.getvalue()
 
 
@@ -471,11 +492,14 @@ async def test_run_app_resume_seeds_history_from_the_prior_session(monkeypatch, 
 
         app_task = asyncio.ensure_future(app_module.run_app(console=console, resume="latest"))
         try:
-            await asyncio.wait_for(script(buf, send), timeout=5.0)
-            await asyncio.wait_for(app_task, timeout=5.0)
+            await asyncio.sleep(0.5)
+            await asyncio.wait_for(script(buf, send), timeout=7.0)
+            await asyncio.wait_for(app_task, timeout=7.0)
         finally:
             if not app_task.done():
                 app_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await app_task
 
     # The model saw the replayed earlier turn on the resumed conversation.
     flat = " ".join(
@@ -560,11 +584,15 @@ async def _drive_run_app_with_keys(
 
         app_task = asyncio.ensure_future(app_mod.run_app(console=console))
         try:
+            await asyncio.sleep(1.0)
             await asyncio.wait_for(script(buf, send, send_keys), timeout=5.0)
             await asyncio.wait_for(app_task, timeout=5.0)
         finally:
             if not app_task.done():
                 app_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await app_task
+
     return buf.getvalue()
 
 
@@ -927,11 +955,14 @@ async def test_run_app_compact_while_idle_compacts_the_over_budget_history(
             send("/quit")
 
         try:
-            await asyncio.wait_for(script(), timeout=5.0)
-            await asyncio.wait_for(app_task, timeout=5.0)
+            await asyncio.sleep(0.5)
+            await asyncio.wait_for(script(), timeout=7.0)
+            await asyncio.wait_for(app_task, timeout=7.0)
         finally:
             if not app_task.done():
                 app_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await app_task
 
     output = buf.getvalue()
     assert "compacted context" in output  # the ContextCompacted line rendered

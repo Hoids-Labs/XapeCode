@@ -95,7 +95,7 @@ def test_init_tracing_builds_langfuse_otlp_exporter_with_basic_auth(
 
     assert init_tracing() is True
 
-    auth = base64.b64encode(b"public-456:secret-123").xape("ascii")
+    auth = base64.b64encode(b"public-456:secret-123").decode("ascii")
     mock_logfire.exporter_cls.assert_called_once_with(
         endpoint="https://us.cloud.langfuse.com/api/public/otel/v1/traces",
         headers={

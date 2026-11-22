@@ -11,7 +11,12 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from xape.tools.exec import ExecResult, LocalExecutor
+
+# Skip all these tests on Windows since they use Unix shell utilities
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Unix shell utilities required")
 
 
 async def test_run_captures_stdout_and_exit_code(tmp_path: Path):

@@ -19,6 +19,7 @@ workspace, no credentials, no network. Three properties carry the design:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 from collections.abc import AsyncIterator, Awaitable, Callable
 from uuid import UUID
@@ -109,11 +110,15 @@ async def _drive_run_app(
 
         app_task = asyncio.ensure_future(app_mod.run_app(console=console))
         try:
-            await asyncio.wait_for(script(buf, send), timeout=5.0)
-            await asyncio.wait_for(app_task, timeout=5.0)
+            await asyncio.sleep(0.5)
+            await asyncio.wait_for(script(buf, send), timeout=7.0)
+            await asyncio.wait_for(app_task, timeout=7.0)
         finally:
             if not app_task.done():
                 app_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await app_task
+
     return buf.getvalue()
 
 

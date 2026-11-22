@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -94,6 +96,21 @@ def _branch_exists(repo: Path, branch: str) -> bool:
     )
 
 
+def _handle_remove_readonly(func, path, exc):
+    """Error handler for shutil.rmtree to remove read-only files on Windows.
+
+    Git creates read-only files in .git/objects/ that cannot be deleted without
+    removing the read-only flag first. This handler is passed to rmtree's onexc
+    parameter to handle such cases.
+    """
+    if isinstance(exc, PermissionError):
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
+
 # never-lose-results: the local Session Branch exists even when the push fails (AC1)
 
 
@@ -110,7 +127,8 @@ def test_dirty_workspace_captured_on_local_branch_even_when_push_fails(tmp_path)
     # The model leaves uncommitted work in the Workspace (never committed).
     (workspace / "agent_work.txt").write_text("uncommitted results\n", encoding="utf-8")
     # Make the push impossible (origin source gone) while the local git stays fully intact.
-    shutil.rmtree(source)
+    # On Windows, use onexc handler to remove read-only files that git creates in .git/objects/.
+    shutil.rmtree(source, onexc=_handle_remove_readonly if sys.platform == "win32" else None)
 
     result = ship_workspace(home, repo=str(source), session_id="abcd1234-5678-9012")
 

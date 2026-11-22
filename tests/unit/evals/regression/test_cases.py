@@ -220,6 +220,7 @@ def test_lsp_diagnostics_binds_lsp_and_output_check() -> None:
 @pytest.mark.skipif(
     shutil.which("ty") is None, reason="the `ty` language server binary is not on PATH"
 )
+@pytest.mark.slow
 def test_lsp_diagnostics_runs_green_offline(install_model) -> None:
     """The ``lsp`` tool drives a REAL ``ty`` server on the seeded file — offline, no keys or network.
 
@@ -235,8 +236,10 @@ def test_lsp_diagnostics_runs_green_offline(install_model) -> None:
 
     payload = run_case(case)
 
-    assert payload["agent_error"] is None
-    assert any(call["name"] == "lsp" for call in payload["tool_calls"])
+    assert payload["agent_error"] is None, f"expected no agent error, got: {payload['agent_error']}"
+    assert any(call["name"] == "lsp" for call in payload["tool_calls"]), (
+        "lsp tool should have been called"
+    )
     assert not lsp_service._CLIENTS, "the driver must reap the ty server (no leaked subprocess)"
     _score_mechanical_metrics(case, payload)
 

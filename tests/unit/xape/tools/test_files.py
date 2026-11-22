@@ -8,6 +8,8 @@ resolution + containment under ``ctx.deps.cwd`` (dotdot/absolute/symlink escapes
 """
 
 import contextlib
+import os
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -28,6 +30,30 @@ from xape.services import lsp as lsp_service
 from xape.services.lsp import Diagnostic
 from xape.tools import files
 from xape.tools.askuser import deny_user_question_resolver
+
+
+def _can_create_symlinks() -> bool:
+    """Check if the system allows creating symlinks (requires elevated privileges on Windows)."""
+    if sys.platform != "win32":
+        return True
+    try:
+        # Try to create a temporary symlink
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = Path(tmpdir) / "target.txt"
+            link = Path(tmpdir) / "link.txt"
+            target.write_text("test")
+            os.symlink(target, link)
+            return True
+    except (OSError, PermissionError, NotImplementedError):
+        return False
+
+
+skip_if_no_symlink_permission = pytest.mark.skipif(
+    not _can_create_symlinks(),
+    reason="Cannot create symlinks; requires elevated privileges on this system",
+)
 
 
 async def _deny_resolver(request: PermissionRequest) -> PermissionDecision:
@@ -205,6 +231,7 @@ def test_glob_rejects_absolute_pattern_outside_cwd(tmp_path: Path):
         files.glob(_ctx(project), pattern=str(secret_file))
 
 
+@skip_if_no_symlink_permission
 def test_glob_excludes_symlink_resolving_outside_cwd(tmp_path: Path):
     # A symlink INSIDE cwd that points to a secret file OUTSIDE cwd must not be listed.
     secrets = tmp_path / "secrets"
@@ -301,6 +328,7 @@ def test_grep_rejects_absolute_glob_outside_cwd_and_does_not_leak(tmp_path: Path
         files.grep(_ctx(project), pattern="API_KEY", glob=str(secret_file))
 
 
+@skip_if_no_symlink_permission
 def test_grep_excludes_symlink_resolving_outside_cwd(tmp_path: Path):
     # A symlink INSIDE cwd pointing to a secret file OUTSIDE cwd must not be searched.
     secrets = tmp_path / "secrets"
@@ -385,6 +413,7 @@ def test_write_rejects_absolute_path_outside_cwd(tmp_path: Path):
     assert not outside.exists()
 
 
+@skip_if_no_symlink_permission
 def test_write_rejects_symlink_resolving_outside_cwd(tmp_path: Path):
     # An in-tree directory symlink pointing OUTSIDE cwd must not let a write escape.
     outside = tmp_path / "outside"
@@ -556,6 +585,7 @@ def test_edit_rejects_absolute_path_outside_cwd(tmp_path: Path):
     assert outside.read_bytes() == b"secret\n"
 
 
+@skip_if_no_symlink_permission
 def test_edit_rejects_symlink_resolving_outside_cwd(tmp_path: Path):
     # An in-tree symlink pointing to a file OUTSIDE cwd must not be editable.
     outside = tmp_path / "outside.txt"

@@ -306,6 +306,11 @@ def run_headless_task(
     )
     state = _RunState()
     try:
+        # On Windows, use ProactorEventLoop for subprocess support (selector doesn't support it)
+        import sys
+
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         output = asyncio.run(
             _run_task(
                 task,

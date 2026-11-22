@@ -72,7 +72,7 @@ def _option(argv: list[str], name: str) -> str:
 
 def test_the_registered_command_is_xape_run_with_no_inline_prompt():
     """The prompt is NOT part of the registration — it arrives in KITARU_TASK_INPUTS (task 136)."""
-    assert _option(_argv(), "--command") == f"{REPO}/.venv/bin/xape run"
+    assert _option(_argv(), "--command") == f"{REPO.as_posix()}/.venv/bin/xape run"
 
 
 def test_the_command_is_an_absolute_binary_so_the_worker_needs_no_path_setup():
@@ -83,7 +83,7 @@ def test_the_command_is_an_absolute_binary_so_the_worker_needs_no_path_setup():
 
 
 def test_the_run_env_puts_the_workspace_in_docker_over_a_clone_of_this_repo():
-    assert build_run_env(repo=REPO) == {"SANDBOX_MODE": "docker", "SANDBOX_REPO": str(REPO)}
+    assert build_run_env(repo=REPO) == {"SANDBOX_MODE": "docker", "SANDBOX_REPO": REPO.as_posix()}
 
 
 def test_every_run_env_entry_is_passed_as_its_own_env_option():
@@ -91,12 +91,12 @@ def test_every_run_env_entry_is_passed_as_its_own_env_option():
 
     assert [argv[i + 1] for i, item in enumerate(argv) if item == "--env"] == [
         "SANDBOX_MODE=docker",
-        f"SANDBOX_REPO={REPO}",
+        f"SANDBOX_REPO={REPO.as_posix()}",
     ]
 
 
 def test_the_working_dir_is_the_harness_home_outside_the_repo():
-    assert _option(_argv(), "--working-dir") == str(HOME)
+    assert _option(_argv(), "--working-dir") == HOME.as_posix()
 
 
 def test_a_harness_home_inside_the_repo_is_refused():
@@ -162,8 +162,8 @@ def test_the_first_registration_creates_the_agent_and_its_first_version():
     )
 
     assert argv[:4] == ["kitaru", "agent", "register", DEFAULT_AGENT]
-    assert _option(argv, "--command") == f"{REPO}/.venv/bin/xape run"
-    assert _option(argv, "--working-dir") == str(HOME)
+    assert _option(argv, "--command") == f"{REPO.as_posix()}/.venv/bin/xape run"
+    assert _option(argv, "--working-dir") == HOME.as_posix()
 
 
 # --- the built spec is one kitaru itself accepts ---------------------------------------------------
@@ -190,7 +190,7 @@ def test_the_built_spec_validates_against_the_installed_kitaru_run_spec():
 
     assert request.run_spec is not None
     assert request.run_spec.working_dir == "/harness"
-    assert request.run_spec.env["SANDBOX_REPO"] == str(REPO)
+    assert request.run_spec.env["SANDBOX_REPO"] == REPO.as_posix()
 
 
 def test_every_server_gets_only_the_laptop_workers_version():
@@ -213,9 +213,9 @@ def registered_version(number: int = 1) -> dict[str, Any]:
         "version": number,
         "display_version": None,
         "run_spec": {
-            "command": f"{REPO}/.venv/bin/xape run",
-            "working_dir": str(HOME),
-            "env": {"SANDBOX_MODE": "docker", "SANDBOX_REPO": str(REPO)},
+            "command": f"{REPO.as_posix()}/.venv/bin/xape run",
+            "working_dir": HOME.as_posix(),
+            "env": {"SANDBOX_MODE": "docker", "SANDBOX_REPO": REPO.as_posix()},
             "secret_ids": [],
             "hooks": [],
             "runtime_capabilities": {"overrides": True, "tool_policies": True},

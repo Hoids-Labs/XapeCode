@@ -96,3 +96,6 @@ asyncio_default_fixture_loop_scope = "function"
 # repo root on the path so the unit tests can import the operator scripts in ``scripts/`` (unpackaged).
 pythonpath = ["src", "tests", "."]
 filterwarnings = ["error"]
+markers = [
+    "slow: test fails under heavy resource load on Windows (run separately for reliability)",
+]

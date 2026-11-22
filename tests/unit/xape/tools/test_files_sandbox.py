@@ -13,7 +13,7 @@ from __future__ import annotations
 import functools
 import subprocess
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import anyio
@@ -27,6 +27,21 @@ from xape.sandbox.executor import FileStat, WorkspaceEscape
 from xape.tools import files
 from xape.tools.askuser import deny_user_question_resolver
 from xape.tools.exec import ExecResult
+
+
+def _bash_available() -> bool:
+    """Check if bash is available on this system."""
+    try:
+        subprocess.run(["bash", "--version"], capture_output=True, check=True, timeout=5)
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
+
+skip_if_no_bash = pytest.mark.skipif(
+    not _bash_available(),
+    reason="Sandbox glob/grep tests require bash (find, grep, etc.) which is not available on this system",
+)
 
 
 async def _deny_resolver(request: PermissionRequest) -> PermissionDecision:
@@ -196,10 +211,17 @@ def test_glob_match_matches_pathlib_across_patterns(tmp_path: Path):
     ]:
         (tmp_path / rel).write_text("", encoding="utf-8")
 
-    all_files = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
+    # Normalize paths to POSIX style for _glob_match (which expects forward slashes)
+    all_files = sorted(
+        PurePosixPath(p.relative_to(tmp_path)).as_posix()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    )
     for pattern in ["*.py", "**/*.py", "**/*", "src/*.py", "src/**/*.py", "**/test_*.py", "*.md"]:
         expected = sorted(
-            str(p.relative_to(tmp_path)) for p in tmp_path.glob(pattern) if p.is_file()
+            PurePosixPath(p.relative_to(tmp_path)).as_posix()
+            for p in tmp_path.glob(pattern)
+            if p.is_file()
         )
         got = sorted(f for f in all_files if files._glob_match(f, pattern))
         assert got == expected, pattern
@@ -333,6 +355,7 @@ def _seed_tree(root: Path) -> None:
     (root / "docs" / "note.md").write_text("a TODO here\n", encoding="utf-8")
 
 
+@skip_if_no_bash
 @pytest.mark.parametrize("pattern", ["*.py", "**/*.py", "**/*", "src/**/*.py"])
 async def test_glob_has_output_parity_with_none_mode(mocker, tmp_path: Path, pattern: str):
     # Same tree, same pattern: the sandbox glob (real ``find`` via the local-exec backend + the shared
@@ -346,6 +369,7 @@ async def test_glob_has_output_parity_with_none_mode(mocker, tmp_path: Path, pat
     assert sandbox_out == none_out
 
 
+@skip_if_no_bash
 async def test_glob_no_matches_is_a_model_retry_in_sandbox(mocker, tmp_path: Path):
     _seed_tree(tmp_path)
     mocker.patch("xape.tools.files._active_backend", return_value=_LocalBackend(tmp_path))
@@ -354,6 +378,7 @@ async def test_glob_no_matches_is_a_model_retry_in_sandbox(mocker, tmp_path: Pat
         await _call(files.glob, _ctx(tmp_path), "*.rs")
 
 
+@skip_if_no_bash
 async def test_glob_rejects_escaping_pattern_in_sandbox(mocker, tmp_path: Path):
     # The escaping-pattern guard runs before the seam in both modes.
     mocker.patch("xape.tools.files._active_backend", return_value=_LocalBackend(tmp_path))
@@ -369,6 +394,7 @@ async def test_glob_rejects_escaping_pattern_in_sandbox(mocker, tmp_path: Path):
         {"glob": "**/*.py"},  # glob file scope (recursive)
     ],
 )
+@skip_if_no_bash
 async def test_grep_has_output_parity_with_none_mode(mocker, tmp_path: Path, kwargs: dict):
     # Same tree + pattern + scope: the sandbox grep (real ``grep`` via the local-exec backend) renders
     # identically to the none-mode grep (Python ``re`` per line) — down to the sorted path:lineno:line.
@@ -389,6 +415,7 @@ async def test_grep_missing_path_is_a_model_retry_in_sandbox(mocker, tmp_path: P
         await _call(files.grep, _ctx(tmp_path), "TODO", "does-not-exist.py")
 
 
+@skip_if_no_bash
 async def test_grep_no_matches_is_a_model_retry_in_sandbox(mocker, tmp_path: Path):
     _seed_tree(tmp_path)
     mocker.patch("xape.tools.files._active_backend", return_value=_LocalBackend(tmp_path))
