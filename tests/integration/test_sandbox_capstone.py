@@ -1102,7 +1102,7 @@ async def test_real_docker_isolated_workspace_roundtrip_and_handback(tmp_path: P
         # 1. One truthful tree: bash AND the file backend both see the cloned file.
         seen = await executor.run("cat README.md", cwd=workspace, timeout_s=30.0)
         assert seen.exit_code == 0 and "cloned-into-workspace" in seen.stdout
-        assert (await executor._backend.read_bytes("README.md")).xape() == "cloned-into-workspace\n"
+        assert (await executor._backend.read_bytes("README.md")).decode() == "cloned-into-workspace\n"
 
         # 2. A bash-written file is host-visible on the mount (.xape/sandbox).
         await executor.run("echo agent-made > new.txt", cwd=workspace, timeout_s=30.0)
@@ -1197,7 +1197,7 @@ async def test_real_modal_isolated_workspace_roundtrip(tmp_path: Path) -> None:
 
         # 2. Direct, truthful file ops — no host mirror.
         await executor.run("echo from-bash > b.txt", cwd=workspace, timeout_s=_MODAL_TIMEOUT_S)
-        assert (await backend.read_bytes("b.txt")).xape().strip() == "from-bash"
+        assert (await backend.read_bytes("b.txt")).decode().strip() == "from-bash"
         await backend.write_bytes("c.txt", b"via-backend\n")
         via = await executor.run("cat c.txt", cwd=workspace, timeout_s=_MODAL_TIMEOUT_S)
         assert via.stdout.strip() == "via-backend"

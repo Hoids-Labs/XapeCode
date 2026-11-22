@@ -155,7 +155,7 @@ async def test_file_ops_and_bash_share_one_truthful_tree(executor: SandboxExecut
 
     # A file written by bash is visible via read_bytes ...
     await executor.run("echo from-bash > b.txt", cwd=tmp_path, timeout_s=30.0)
-    assert (await backend.read_bytes("b.txt")).xape().strip() == "from-bash"
+    assert (await backend.read_bytes("b.txt")).decode().strip() == "from-bash"
 
     # ... and a file written via write_bytes is visible to bash.
     await backend.write_bytes("sub/w.txt", b"from-fileop\n")
