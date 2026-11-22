@@ -41,8 +41,11 @@ _WORKSPACE = "/workspace"
 # Grace between SIGTERM and the SIGKILL escalation for a timed-out ``docker exec`` client.
 _KILL_GRACE_S = 2.0
 
+# SIGKILL sentinel for timeout exit code (Unix-only; on Windows, use a fixed sentinel value).
+_SIGKILL = getattr(signal, "SIGKILL", 9)  # 9 is SIGKILL on Unix systems
+
 # Killed-by-signal sentinel for a timeout (mirrors ``LocalExecutor``).
-_TIMEOUT_EXIT = -signal.SIGKILL
+_TIMEOUT_EXIT = -_SIGKILL
 
 # Rendered when ``docker exec`` cannot even be spawned (the CLI itself is gone): a ``bash`` call
 # surfaces a failure (125 = docker's "failed to run" convention), never a crash.
@@ -204,7 +207,7 @@ class DockerBackend:
         _signal_group(proc, signal.SIGTERM)
         done, _ = await asyncio.wait({comm}, timeout=_KILL_GRACE_S)
         if not done:
-            _signal_group(proc, signal.SIGKILL)
+            _signal_group(proc, _SIGKILL)
         return await comm
 
     # --- file ops (pathlib on the bind mount; ADR-0012 §4) --------------------------------------
@@ -279,7 +282,7 @@ class DockerBackend:
         rendered error) could read. Unset → byte-identical to the no-token run. No skills mount —
         skills are seeded host-side into the Workspace (ADR-0012 §5).
         """
-        args = ["run", "-d", "--rm", "-v", f"{workspace}:{_WORKSPACE}", "-w", _WORKSPACE]
+        args = ["run", "-d", "--rm", "-v", f"{workspace.as_posix()}:{_WORKSPACE}", "-w", _WORKSPACE]
         if sandbox_git_token():
             args += ["-e", GIT_TOKEN_ENV]
         args += [settings.sandbox_image, "sleep", "infinity"]
@@ -359,7 +362,7 @@ async def _run_docker_quiet(*args: str) -> None:
 
 def _xape(raw: bytes) -> str:
     """Decode captured subprocess bytes as UTF-8, replacing undecodable bytes (never crash)."""
-    return raw.xape("utf-8", errors="replace")
+    return raw.decode("utf-8", errors="replace")
 
 
 def _run_env() -> dict[str, str] | None:

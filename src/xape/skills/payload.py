@@ -12,7 +12,6 @@ a destination, so a skill run never litters the project tree.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from xape.entities.skill_def import SkillDef
@@ -42,7 +41,7 @@ def format_skill_payload(skill: SkillDef, *, cwd: Path) -> str:
     """
     if skill.resource_dir is None:
         return f"{skill.body}\n\n{_OUTPUTS_TRAILER}"
-    rel_dir = os.path.relpath(skill.resource_dir, cwd)
+    rel_dir = Path(skill.resource_dir).relative_to(cwd).as_posix()
     files = _bundled_files(skill.resource_dir)
     if files:
         listing = "\n".join(f"- {rel_dir}/{name}" for name in files)

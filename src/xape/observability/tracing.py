@@ -120,7 +120,7 @@ def init_tracing() -> bool:
     base = settings.langfuse_base_url.strip().rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise ValueError("LANGFUSE_BASE_URL must be an http(s) URL.")
-    authorization = base64.b64encode(f"{public_key}:{secret_key}".encode()).xape("ascii")
+    authorization = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode("ascii")
     exporter = OTLPSpanExporter(
         endpoint=f"{base}/api/public/otel/v1/traces",
         headers={

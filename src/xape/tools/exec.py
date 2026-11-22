@@ -6,9 +6,9 @@ module **infra-agnostic**: a command string, a working directory, a timeout, and
 :class:`ExecResult` — nothing about bash, the agent, truncation, or permissions.
 
 **Timeout = no leaked processes.** The child runs in its **own process group**
-(``start_new_session=True``); on timeout the *whole group* is signalled (``SIGTERM`` →
-``SIGKILL`` after a short grace window) so spawned children die too, and the partial output
-captured so far is returned with ``timed_out=True``.
+(``start_new_session=True`` on POSIX, ``CREATE_NEW_PROCESS_GROUP`` on Windows); on timeout the
+*whole group* is signalled (``SIGTERM`` → ``SIGKILL`` after a short grace window) so spawned
+children die too, and the partial output captured so far is returned with ``timed_out=True``.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ import asyncio
 import logging
 import os
 import signal
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -25,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 # Grace between SIGTERM and SIGKILL for a timed-out group — deliberately short.
 _KILL_GRACE_S = 2.0
+
+# SIGKILL sentinel for timeout exit code (Unix-only; on Windows, use a fixed sentinel value).
+_SIGKILL = getattr(signal, "SIGKILL", 9)  # 9 is SIGKILL on Unix systems
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,13 +78,19 @@ class LocalExecutor:
         :func:`asyncio.wait` with a timeout instead and, after killing the group, ``await`` the
         *same* task to drain what the child already wrote.
         """
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-            start_new_session=True,  # own process group: kill it as a unit, children included
-        )
+        popen_kwargs: dict[str, object] = {
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "cwd": cwd,
+        }
+        # On POSIX, create a new session so timeout signals reach the whole group.
+        # On Windows, use CREATE_NEW_PROCESS_GROUP for similar isolation.
+        if sys.platform != "win32":
+            popen_kwargs["start_new_session"] = True
+        else:
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        process = await asyncio.create_subprocess_shell(command, **popen_kwargs)
         comm = asyncio.ensure_future(process.communicate())
         done, _ = await asyncio.wait({comm}, timeout=timeout_s)
         if not done:
@@ -88,7 +99,7 @@ class LocalExecutor:
             return ExecResult(
                 stdout=_xape(stdout),
                 stderr=_xape(stderr),
-                exit_code=process.returncode if process.returncode is not None else -signal.SIGKILL,
+                exit_code=process.returncode if process.returncode is not None else -_SIGKILL,
                 timed_out=True,
             )
         stdout, stderr = await comm
@@ -114,25 +125,29 @@ class LocalExecutor:
         _signal_group(process, signal.SIGTERM)
         done, _ = await asyncio.wait({comm}, timeout=_KILL_GRACE_S)
         if not done:
-            _signal_group(process, signal.SIGKILL)
+            _signal_group(process, _SIGKILL)
         return await comm
 
 
 def _signal_group(process: asyncio.subprocess.Process, sig: signal.Signals) -> None:
     """Send ``sig`` to the child's entire process group; tolerate an already-dead process.
 
-    With ``start_new_session=True`` the child's PID is its group id, so ``os.killpg`` reaches
-    every descendant in one call; :class:`ProcessLookupError` / :class:`PermissionError` are
-    swallowed — nothing left to kill.
+    On POSIX with ``start_new_session=True``, the child's PID is its group id, so ``os.killpg``
+    reaches every descendant in one call. On Windows with ``CREATE_NEW_PROCESS_GROUP``, we use
+    ``os.kill`` to signal the main process, which propagates to the group.
+    :class:`ProcessLookupError` / :class:`PermissionError` are swallowed — nothing left to kill.
     """
     if process.returncode is not None:
         return
     try:
-        os.killpg(process.pid, sig)
+        if sys.platform != "win32":
+            os.killpg(process.pid, sig)
+        else:
+            os.kill(process.pid, sig)
     except (ProcessLookupError, PermissionError):
         logger.debug("process group %d already gone when sending %s", process.pid, sig.name)
 
 
 def _xape(raw: bytes) -> str:
     """Decode captured subprocess bytes as UTF-8, replacing undecodable bytes (never crash)."""
-    return raw.xape("utf-8", errors="replace")
+    return raw.decode("utf-8", errors="replace")

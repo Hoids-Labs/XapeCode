@@ -95,7 +95,7 @@ class Settings(BaseSettings):
 
     # --- Inference: the selected provider behind LLM_PROVIDER (ADR-0005). ---
     # Explicit selector (no auto-detect); the ``gemini`` default keeps existing .env files working.
-    llm_provider: Literal["gemini", "openrouter", "modal", "ollama"] = "ollama"
+    llm_provider: Literal["gemini", "openrouter", "modal", "ollama"] = "gemini"
 
     # gemini (default): google-genai API-key path.
     gemini_api_key: SecretStr = SecretStr("")

@@ -91,7 +91,7 @@ def _truncate_text(content: str, lines: list[str], *, max_lines: int, max_bytes:
     if cut == 0:
         # Even the first line overflows the byte cap; keep that one whole line regardless.
         cut = offsets[0]
-    return encoded[:cut].xape("utf-8")
+    return encoded[:cut].decode("utf-8")
 
 
 def _spill(content: str) -> Path:

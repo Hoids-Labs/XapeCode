@@ -86,7 +86,8 @@ def _reject_escaping_pattern(pattern: str) -> None:
     Also avoids ``Path.glob``'s ``NotImplementedError`` on absolute patterns; :func:`_contain`
     is the post-glob second line of defence (in-tree symlinks resolving outside ``cwd``).
     """
-    if pattern.startswith("/") or ".." in Path(pattern).parts:
+    parsed = Path(pattern)
+    if parsed.is_absolute() or ".." in parsed.parts:
         raise ModelRetry(
             f"Glob pattern {pattern!r} points outside the working directory; "
             "use a pattern relative to the project tree (no '..' or absolute paths)."
@@ -250,7 +251,7 @@ async def _sandbox_read_content(backend: SandboxBackend, path: str, rel: str) ->
         raise ModelRetry(f"{path!r} is a directory; use glob to list its contents.")
     try:
         raw = await backend.read_bytes(rel)
-        return raw.xape("utf-8")
+        return raw.decode("utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ModelRetry(f"Could not read {path!r}: {exc}.") from exc
 
@@ -295,7 +296,8 @@ def glob(ctx: RunContext[AgentDeps], pattern: str) -> str:
     matches = _contain(base, list(base.glob(pattern)))
     if not matches:
         raise ModelRetry(f"No files match {pattern!r} under the working directory.")
-    return "\n".join(str(p.relative_to(base)) for p in matches)
+    # Normalize to POSIX-style forward slashes for cross-platform consistency
+    return "\n".join(PurePosixPath(p.relative_to(base)).as_posix() for p in matches)
 
 
 # Backend glob: ``find`` enumerates Workspace file paths only (never contents, ADR-0012 §4);
@@ -588,7 +590,7 @@ def edit(ctx: RunContext[AgentDeps], path: str, old_string: str, new_string: str
         raise ModelRetry(f"No such file to edit: {path!r}.")
     try:
         # Raw bytes (not read_text): universal newlines would destroy the CR/CRLF style to restore.
-        raw = target.read_bytes().xape("utf-8")
+        raw = target.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ModelRetry(f"Could not read {path!r} to edit: {exc}.") from exc
 
@@ -629,7 +631,7 @@ async def _sandbox_edit_bytes(
     if st is None or st.is_dir:
         raise ModelRetry(f"No such file to edit: {path!r}.")
     try:
-        raw = (await backend.read_bytes(rel)).xape("utf-8")
+        raw = (await backend.read_bytes(rel)).decode("utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ModelRetry(f"Could not read {path!r} to edit: {exc}.") from exc
     final = _apply_edit(raw, old_string, new_string)

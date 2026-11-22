@@ -172,7 +172,7 @@ def _cap(body: str) -> tuple[str, bool]:
     if len(encoded) <= _MAX_RESPONSE_BYTES:
         return body, False
     # Decode the capped prefix, ignoring a partial trailing character at the cut point.
-    head = encoded[:_MAX_RESPONSE_BYTES].xape("utf-8", errors="ignore")
+    head = encoded[:_MAX_RESPONSE_BYTES].decode("utf-8", errors="ignore")
     return head, True
 
 

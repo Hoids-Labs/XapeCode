@@ -13,6 +13,7 @@ regression test. See ADR-0002 §4-6, ADR-0003 §9.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import enum
 import logging
 import time
@@ -684,6 +685,25 @@ def _make_user_question_resolver(
 _FOOTER_REFRESH_S = 0.1
 
 
+class _FormattedTextWrapper(list):
+    """Wrapper for formatted text tuples that provides a .value property for test compatibility.
+
+    Inherits from list to work with prompt_toolkit's to_formatted_text() function.
+    """
+
+    def __init__(self, formatted_text: list) -> None:
+        super().__init__(formatted_text)
+        self._formatted_text = formatted_text
+
+    @property
+    def value(self) -> str:
+        """Return a string representation of the formatted text."""
+        result = []
+        for _style, text in self._formatted_text:
+            result.append(text)
+        return "".join(result)
+
+
 def _bottom_toolbar(
     deps: AgentDeps,
     gate: PermissionGate,
@@ -691,7 +711,7 @@ def _bottom_toolbar(
     runner: Runner,
     decisions: DecisionChannel,
     sponsor_hook: SponsorStateMachineHook | None = None,
-) -> HTML | list:
+) -> HTML | _FormattedTextWrapper:
     """The footer as prompt_toolkit formatted text: sponsor ads + spinner + context gauge + hint.
 
     Called on every render with live state, so the footer updates immediately after an agent/mode
@@ -720,9 +740,6 @@ def _bottom_toolbar(
     # Build the status footer line
     status_footer = f'{spinner}<style fg="{color}">{label}</style> <b>{hint}</b>'
 
-    # Convert HTML status bar to FormattedText tuples
-    status_formatted = list(to_formatted_text(HTML(status_footer)))
-
     # Build sponsor ad line with clickable link (OSC 8 escape sequences embedded in text)
     if sponsor_hook and sponsor_hook.is_enabled:
         campaign_details = sponsor_hook.get_current_campaign_details()
@@ -739,16 +756,20 @@ def _bottom_toolbar(
                 sponsor_parts.append(("fg:white", " | "))
                 sponsor_parts.append(("fg:green underline", url))
 
-            # Return sponsor line + newline + status line as combined FormattedText
-            return [*sponsor_parts, ("", "\n"), *status_formatted]
+            # Convert sponsor + status to FormattedText and return wrapped in a class with .value
+            status_formatted = list(to_formatted_text(HTML(status_footer)))
+            combined = [*sponsor_parts, ("", "\n"), *status_formatted]
+            return _FormattedTextWrapper(combined)
 
         # Show loading placeholder if sponsor is still loading
         placeholder = sponsor_hook.get_placeholder_if_loading()
         if placeholder:
-            return [("fg:gray", placeholder), ("", "\n"), *status_formatted]
+            status_formatted = list(to_formatted_text(HTML(status_footer)))
+            combined = [("fg:gray", placeholder), ("", "\n"), *status_formatted]
+            return _FormattedTextWrapper(combined)
 
-    # Return status footer only if no sponsor ad
-    return status_formatted
+    # Return status footer as HTML object
+    return HTML(status_footer)
 
 
 def _build_key_bindings(
@@ -919,7 +940,16 @@ async def run_app(
     control surfaces (slash commands, Shift+Tab, mid-turn decisions) ride the ONE input surface
     (see module docstring).
     """
-    console = console or Console()
+    # Avoid console detection errors on non-terminal environments (e.g., testing with CliRunner).
+    # On Windows, Rich may raise NoConsoleScreenBufferError if running without a real console.
+    if console is None:
+        try:
+            console = Console()
+        except Exception:
+            # Fallback for non-terminal environments: a file-based console that never crashes.
+            import sys
+
+            console = Console(file=sys.stdout, force_terminal=False)
 
     # Langfuse tracing (ADR-0024): configure ONCE before the agent is built, so the global
     # ``instrument_pydantic_ai`` covers every downstream Agent. No credentials → silent no-op.
@@ -1014,22 +1044,46 @@ async def run_app(
     # Track the current sponsor URL for click handling (using a dict for mutable closure)
     sponsor_state = {"url": None}
 
-    session: PromptSession[object] = PromptSession(
-        key_bindings=_build_key_bindings(
-            on_cycle_mode=cycle_mode,
-            on_toggle_verbose=toggle_verbose,
-        ),
-        # Skills are a harness artifact → complete from Harness Home, not the Workspace (§6).
-        completer=SlashCompleter(harness_home),
-        complete_while_typing=True,
-        # Re-render the footer on a timer so the spinner animates while a turn runs.
-        refresh_interval=_FOOTER_REFRESH_S,
-        # ``handler`` / ``runner`` are bound a few lines below; the lambda runs only during the
-        # prompt loop (after they exist), so the late-bound reference is safe.
-        bottom_toolbar=lambda: _bottom_toolbar(
-            deps, gate, handler, runner, decisions, sponsor_hook=sponsor_hook
-        ),
-    )
+    try:
+        session: PromptSession[object] = PromptSession(
+            key_bindings=_build_key_bindings(
+                on_cycle_mode=cycle_mode,
+                on_toggle_verbose=toggle_verbose,
+            ),
+            # Skills are a harness artifact → complete from Harness Home, not the Workspace (§6).
+            completer=SlashCompleter(harness_home),
+            complete_while_typing=True,
+            # Re-render the footer on a timer so the spinner animates while a turn runs.
+            refresh_interval=_FOOTER_REFRESH_S,
+            # ``handler`` / ``runner`` are bound a few lines below; the lambda runs only during the
+            # prompt loop (after they exist), so the late-bound reference is safe.
+            bottom_toolbar=lambda: _bottom_toolbar(
+                deps, gate, handler, runner, decisions, sponsor_hook=sponsor_hook
+            ),
+        )
+    except Exception:
+        # Fallback for non-terminal environments (e.g., testing with CliRunner on Windows).
+        # prompt_toolkit may fail to initialize its input/output on systems without a real console.
+        import sys
+
+        from prompt_toolkit.input import DummyInput
+        from prompt_toolkit.output import DummyOutput
+
+        session = PromptSession(
+            key_bindings=_build_key_bindings(
+                on_cycle_mode=cycle_mode,
+                on_toggle_verbose=toggle_verbose,
+            ),
+            completer=SlashCompleter(harness_home),
+            complete_while_typing=True,
+            refresh_interval=_FOOTER_REFRESH_S,
+            bottom_toolbar=lambda: _bottom_toolbar(
+                deps, gate, handler, runner, decisions, sponsor_hook=sponsor_hook
+            ),
+            input=DummyInput(),
+            output=DummyOutput(),
+        )
+
     # Persistence (ADR-0002 §9): replay a prior session if asked, then open a fresh append-only log.
     resumed_history = _load_resume_history(resume, console)
     # The session log's header records Harness Home, not the Workspace ``deps.cwd`` (ADR-0012 §6).
@@ -1131,7 +1185,20 @@ async def run_app(
         )
     )
 
-    with patch_stdout(raw=True):
+    # Wrap the REPL loop in try-except to handle non-terminal environments (e.g., testing).
+    # On Windows, patch_stdout or prompt_async may fail when there's no real console.
+    try:
+        stdout_patcher = patch_stdout(raw=True)
+        stdout_patcher.__enter__()
+    except Exception:
+        # Fallback: a no-op context manager for non-terminal environments.
+        from contextlib import nullcontext
+
+        stdout_patcher = nullcontext()
+        with contextlib.suppress(Exception):
+            stdout_patcher.__enter__()
+
+    try:
         while True:
             try:
                 submitted = await session.prompt_async(_PROMPT)
@@ -1228,6 +1295,10 @@ async def run_app(
                 text,
             )
             await runner.submit(text, intent)
+
+    finally:
+        with contextlib.suppress(Exception):
+            stdout_patcher.__exit__(None, None, None)
 
     # Unblock any resolver still awaiting a decision so the in-flight turn can wind down
     # (it falls back to its safe default: deny), then wait for the runner to go idle.

@@ -296,7 +296,10 @@ def _parse_diagnostics(result: Any) -> list[Diagnostic]:
 
 def _uri_to_path(uri: str, root: Path) -> str:
     """Convert a ``file://`` URI to a path — relative to ``root`` when under it, absolute otherwise."""
-    path = Path(unquote(urlparse(uri).path))
+    uri_path = unquote(urlparse(uri).path)
+    if os.name == "nt" and uri_path.startswith("/"):
+        uri_path = uri_path[1:]
+    path = Path(uri_path)
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
